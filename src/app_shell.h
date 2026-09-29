@@ -57,6 +57,9 @@ namespace app_shell {
 #if !APPS_LAUNCH_ONE
         APP_TICKER,
 #endif
+#if LIVECAM_ENABLED
+        APP_LIVECAM,     // only when src/secrets.h names a camera (config.h)
+#endif
         APP_SETTINGS,
         APP_COUNT,
     };

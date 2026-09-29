@@ -35,6 +35,37 @@
 // device pretending it never understood them.
 #define APPS_LAUNCH_ONE 1
 
+// ---------- Live Cam (network camera app) ----------
+// Built only when src/secrets.h exists and defines LIVECAM_URL, so the stock firmware and
+// the desktop simulator are unchanged, and a camera's address never reaches the public
+// repo (secrets.h is in .gitignore). Copy src/secrets.example.h to src/secrets.h to turn it
+// on. Independent of APPS_LAUNCH_ONE: switching this on brings back nothing else.
+#if defined(ARDUINO) && __has_include("secrets.h")
+#include "secrets.h"
+#endif
+#if defined(ARDUINO) && defined(LIVECAM_URL)
+#define LIVECAM_ENABLED 1
+#else
+#define LIVECAM_ENABLED 0
+#endif
+#ifndef LIVECAM_NAME
+#define LIVECAM_NAME        "Live Cam"   // the knob menu's label for it
+#endif
+#define LIVECAM_JPEG_MAX    (128 * 1024) // largest frame accepted; 640x360 at -q:v 28 is ~20-40 KB
+#define LIVECAM_CONNECT_MS  3000         // TCP connect timeout
+#define LIVECAM_ANSWER_MS   15000        // first reply; go2rtc starts ffmpeg + RTSP on demand, which is slow
+#define LIVECAM_READ_MS     10000        // no complete frame for this long = stream lost
+// Once frames flow, a shorter gap already means lost: on a real Orb the stream stalled for
+// 10 s at a time while go2rtc, measured from a PC, never paused longer than 0.36 s. The
+// stalls track internal RAM (WiFi RX buffers must live there), and a new connection gets
+// frames again sooner than waiting out TCP's retransmit backoff.
+#define LIVECAM_STALL_MS       3000
+#define LIVECAM_STALL_RETRY_MS 100       // reconnect almost at once after a stall
+#define LIVECAM_STALE_MS    4000         // keep the last picture up, without a message, this long
+#define LIVECAM_RETRY_MS    2000         // pause before reconnecting after a failure
+#define LIVECAM_SNAPSHOT_MS 50           // pause between snapshot fetches (go2rtc already waits for the next frame)
+#define LIVECAM_TICK_MS     40           // how often the screen looks for a new frame
+
 // ---------- Home location ----------
 // A PLACEHOLDER, and deliberately not a place. The device has exactly two location inputs
 // (UX-025): the network it joins, looked up at the end of WiFi setup and retried on any

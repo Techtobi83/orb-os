@@ -56,6 +56,7 @@
 #include "custom_boot_target.h"       // CUSTOM_BOOT_TARGET — set by whichever Launch Kit push (clock/splash/radar) ran last
 #include "custom_apps.h"              // CUSTOM_APP_* — which apps a theme flash includes in the menu
 #include "spycam_view.h"             // Spy Cam: looping "security camera" flip-book
+#include "livecam_view.h"            // Live Cam: a network camera, when secrets.h names one
 #include "intel_view.h"
 #include "ticker_view.h"
 #include "ticker.h"              // world headlines, read through the gateway
@@ -2712,6 +2713,12 @@ void setup() {
     app_shell::add(tickerview::screen(), theme_style::names().ticker,
                    tickerview::onPress, tickerview::onTurn, false,
                    tickerview::onEnter, tickerview::onExit, !theme_style::apps().ticker);  // turn steps the watchlist; onEnter takes the strip canvas only when the design curves it
+#endif
+#if LIVECAM_ENABLED
+    livecamview::init();
+    psram_mark("after livecamview");
+    app_shell::add(livecamview::screen(), LIVECAM_NAME, nullptr, nullptr, false,
+                   livecamview::onEnter, livecamview::onExit, false);  // onEnter opens the stream, onExit closes it
 #endif
     settingsview::init();
     psram_mark("after settingsview");
