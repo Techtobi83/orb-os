@@ -65,6 +65,9 @@ extern void host_wx_units_set(int mode);
 // that button's callback did.
 extern float host_get_range_km();
 extern void  host_set_range_km(float km);
+// The Livestream app's camera URL. Saved to NVS and handed to the running app at once.
+extern void host_livestream_url_get(char *out, size_t n);
+extern void host_livestream_url_set(const char *url);
 
 namespace {
     // MODE_LOCATION is a 4-item menu (current / search / recent / back); MODE_RECENT is
@@ -72,15 +75,16 @@ namespace {
     enum Mode { MODE_MENU, MODE_DISPLAY, MODE_BRIGHT, MODE_LOCATION, MODE_RECENT, MODE_SEARCH, MODE_SOUND, MODE_VOLUME, MODE_ABOUT,
                 MODE_WIFI_LIST, MODE_WIFI_PASSWORD, MODE_WIFI_STATUS, MODE_RESET_CONFIRM, MODE_UNITS, MODE_CHIME_SELECT,
                 MODE_THEME_SELECT, MODE_THEME_NOTICE, MODE_DESIGN_SELECT, MODE_DESIGN_NOTICE, MODE_RANGE,
-                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD };
+                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL };
 
     // --- main settings menu ---
     // ITEM_RANGE was added when touch (and with it the on-screen zoom button) was
     // removed. Inserting mid-list shifts the numeric meaning of a theme's saved
     // "default selection", so an older theme may now open Settings on a neighbouring
     // item. Cosmetic only, and DEFAULT_SEL below still clamps anything out of range.
-    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_WIFI, ITEM_DESIGN, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
-    const char *ITEM_LABELS[ITEM_COUNT] = { "Display", "Location", "Sound", "Units", "Range", "WiFi", "Theme", "About", "Reset", "Back" };
+    // ITEM_STREAM (the Livestream app's camera URL) was inserted after Range the same way.
+    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_STREAM, ITEM_WIFI, ITEM_DESIGN, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
+    const char *ITEM_LABELS[ITEM_COUNT] = { "Display", "Location", "Sound", "Units", "Range", "Livestream", "WiFi", "Theme", "About", "Reset", "Back" };
     // A Launch Kit push's "Default selection" (was editor-preview-only; now baked
     // in) — which item the main menu opens on, both at first boot and every time
     // the app switcher hands control back to Settings. Out-of-range (a stale
@@ -299,6 +303,11 @@ namespace {
     const int  WK_BACK = N_WKEYS + 2;      // strip index for "give up and go back"
     const int  WK_TOTAL = N_WKEYS + 3;
 
+    // Livestream URL entry: the same page and strip as the password, with its own text.
+    // It opens on the saved URL (or "http://" when there is none), because a changed port
+    // or stream name is an edit at the end, and retyping the whole address by knob is not.
+    char    s_url[LIVECAM_URL_MAX] = "";
+
     // Four, not five. At 26 px five rows spanned 280 px and pushed the title off the top
     // while the hint collided with the last row — caught by rendering it, not by reasoning
     // about it. Larger type means fewer rows, which is the same trade the character strip
@@ -444,7 +453,7 @@ namespace {
     // composited over the splash: settings_overlay.png is move_foreground()'d, so Aviator's
     // "SETTINGS" wordmark and winged badge sat on top of the ORB logo.
     bool mode_paints_its_own_screen(Mode m) {
-        return m == MODE_ABOUT || mode_is_system_chrome(m);
+        return m == MODE_ABOUT || m == MODE_STREAM_URL || mode_is_system_chrome(m);
     }
 
     lv_obj_t *s_resetPage = nullptr;   // Reset: warning + confirm, push to wipe, turn to cancel
@@ -904,6 +913,7 @@ namespace {
 
     void refresh_wifi_list();     // defined below (used by show_page)
     void refresh_wifi_pass();
+    void refresh_stream_url();
 
     // Re-decodes on every entry rather than caching: splash_art_decode()'s target buffer
     // is shared with ui_splash_show(), so holding onto a stale lv_img_dsc_t across a boot
@@ -1015,6 +1025,7 @@ namespace {
         else if (m == MODE_NO_SDCARD)       { lv_obj_clear_flag(s_noSdPage, LV_OBJ_FLAG_HIDDEN); }
         else if (m == MODE_WIFI_LIST)     { lv_obj_clear_flag(s_wifiListPage, LV_OBJ_FLAG_HIDDEN); refresh_wifi_list(); }
         else if (m == MODE_WIFI_PASSWORD) { lv_obj_clear_flag(s_wifiPassPage, LV_OBJ_FLAG_HIDDEN); refresh_wifi_pass(); }
+        else if (m == MODE_STREAM_URL)    { lv_obj_clear_flag(s_wifiPassPage, LV_OBJ_FLAG_HIDDEN); refresh_stream_url(); }
         else if (m == MODE_WIFI_STATUS)   { lv_obj_clear_flag(s_wifiStatusPage, LV_OBJ_FLAG_HIDDEN); }
         else if (m == MODE_THEME_SELECT)  { lv_obj_clear_flag(s_themeSelPage, LV_OBJ_FLAG_HIDDEN); refresh_themeSelect(); }
         else if (m == MODE_THEME_NOTICE)  { lv_obj_clear_flag(s_themeNoticePage, LV_OBJ_FLAG_HIDDEN); }
@@ -1094,9 +1105,35 @@ namespace {
                                                              : "turn to choose, push to select");
     }
 
+    void refresh_key_strip();
+
     void refresh_wifi_pass() {
+        lv_label_set_long_mode(s_passText, LV_LABEL_LONG_DOT);   // the URL page wraps it
+        lv_obj_align(s_passText, LV_ALIGN_CENTER, 0, -70);
+        lv_label_set_text(s_wifiPassHint, "turn to a key, push to enter it\nOK connects, Back returns");
         lv_label_set_text(s_passText, s_pass[0] ? s_pass : "(enter password)");
         lv_obj_set_style_text_font(s_passText, &lv_font_montserrat_26, 0);   // reading back what you typed matters
+        refresh_key_strip();
+    }
+
+    void refresh_stream_url() {
+        lv_label_set_text(s_wifiPassTitle, "Livestream URL");
+        lv_label_set_text(s_wifiPassHint, "push adds the key, DEL removes the last\nOK saves, Back keeps the old URL");
+        // A URL is long and every character of it matters, so it wraps rather than being
+        // cut with dots, and only its tail is shown once it outgrows three lines: typing
+        // happens at the end, so the end is what has to be visible.
+        lv_label_set_long_mode(s_passText, LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_font(s_passText, &lv_font_montserrat_18, 0);
+        lv_obj_align(s_passText, LV_ALIGN_CENTER, 0, -62);
+        constexpr size_t SHOW = 72;
+        const size_t L = strlen(s_url);
+        if (!L)            lv_label_set_text(s_passText, "(enter the stream URL)");
+        else if (L > SHOW) lv_label_set_text_fmt(s_passText, "...%s", s_url + (L - SHOW));
+        else               lv_label_set_text(s_passText, s_url);
+        refresh_key_strip();
+    }
+
+    void refresh_key_strip() {
         for (int k = 0; k < 7; ++k) {
             const int idx = s_wkbIdx - 3 + k;
             const bool hot = (k == 3);
@@ -1322,6 +1359,9 @@ void settingsview::onTurn(int delta) {
         // you are standing, rather than eighty-odd.
         s_wkbIdx = (s_wkbIdx + step + WK_TOTAL) % WK_TOTAL;
         refresh_wifi_pass();
+    } else if (s_mode == MODE_STREAM_URL) {
+        s_wkbIdx = (s_wkbIdx + step + WK_TOTAL) % WK_TOTAL;   // wraps, as the password strip does
+        refresh_stream_url();
     } else if (s_mode == MODE_THEME_SELECT) {
         s_themeSel += step;
         if (s_themeSel < 0) s_themeSel = 0;
@@ -1430,6 +1470,12 @@ void settingsview::onPress() {
         else if (s_sel == ITEM_SOUND) { s_sndSel = 0; show_page(MODE_SOUND); }
         else if (s_sel == ITEM_UNITS) { s_unitsSel = 0; show_page(MODE_UNITS); }
         else if (s_sel == ITEM_RANGE) { s_rangeSel = 0; show_page(MODE_RANGE); }
+        else if (s_sel == ITEM_STREAM) {
+            host_livestream_url_get(s_url, sizeof(s_url));
+            if (!s_url[0]) strcpy(s_url, "http://");
+            s_wkbIdx = 0;
+            show_page(MODE_STREAM_URL);
+        }
         else if (s_sel == ITEM_WIFI) { diag::log("wifi: enter (open list)"); start_wifi_scan(); show_page(MODE_WIFI_LIST); }
         else if (s_sel == ITEM_DESIGN) { s_designSel = 0; show_page(MODE_DESIGN_SELECT); }
         else if (s_sel == ITEM_ABOUT) { show_page(MODE_ABOUT); }
@@ -1492,6 +1538,21 @@ void settingsview::onPress() {
             show_page(MODE_WIFI_LIST);
         } else {                                                       // OK -> connect
             wifi_begin_connect(s_pass);
+        }
+    } else if (s_mode == MODE_STREAM_URL) {
+        const int L = (int)strlen(s_url);
+        if (s_wkbIdx < N_WKEYS) {                                       // add a character
+            if (L < (int)sizeof(s_url) - 1) { s_url[L] = WKEYS[s_wkbIdx]; s_url[L + 1] = 0; }
+            refresh_stream_url();
+        } else if (s_wkbIdx == WK_DEL) {                               // backspace; on empty, leave
+            if (L > 0) { s_url[L - 1] = 0; refresh_stream_url(); }
+            else       { s_sel = ITEM_STREAM; show_page(MODE_MENU); }
+        } else if (s_wkbIdx == WK_BACK) {                              // leave, nothing saved
+            s_sel = ITEM_STREAM; show_page(MODE_MENU);
+        } else {                                                       // OK: save and use it now
+            // "http://" alone is only the starting text, so saving it means "no URL".
+            host_livestream_url_set(strcmp(s_url, "http://") ? s_url : "");
+            s_sel = ITEM_STREAM; show_page(MODE_MENU);
         }
     } else if (s_mode == MODE_WIFI_STATUS) {
         if (!s_wifiConnecting) show_page(MODE_WIFI_LIST);   // ignore while actively connecting

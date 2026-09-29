@@ -1,10 +1,10 @@
-// Live Cam: one network camera, full screen, as a stream of JPEGs.
+// Livestream: one network camera, full screen, as a stream of JPEGs.
 //
 // The source is any plain-HTTP URL that answers with either a multipart MJPEG stream
 // (multipart/x-mixed-replace, which is what go2rtc's /api/stream.mjpeg serves) or a single
-// JPEG (a snapshot URL, fetched again and again). It comes from src/secrets.h, which is
-// gitignored, so a camera address never reaches the public repo. Without that file this
-// whole translation unit compiles to nothing: see LIVECAM_ENABLED in config.h.
+// JPEG (a snapshot URL, fetched again and again). The owner sets it on the device, in
+// Settings > Livestream or at http://theorb.local/livestream; main.cpp keeps it in NVS and
+// hands it over through init() and setUrl(). Nothing about a camera is compiled in.
 //
 // Two threads, one job each:
 //   - stream_task (core 0) owns the socket. It is created at boot and sleeps until onEnter
@@ -52,11 +52,17 @@ namespace {
         ERR_NO_TASK     = -11,  // the stream task could not be created at boot
     };
 
-    // LIVECAM_URL, split once in init().
-    char     s_host[64];
-    uint16_t s_port  = 80;
-    char     s_path[192];
-    bool     s_urlOk = false;
+    // The camera URL. It is set at boot (init) and may change at any time after, from
+    // Settings or the web page, on a thread that is not the stream task's. So a new URL is
+    // only ever PARKED here (s_urlNext, under s_mux), and the task picks it up between
+    // requests; s_host/s_port/s_path belong to the task alone once it runs.
+    enum UrlState : uint8_t { URL_NONE, URL_BAD, URL_OK };
+    char              s_host[64];
+    uint16_t          s_port  = 80;
+    char              s_path[LIVECAM_URL_MAX];
+    char              s_urlNext[LIVECAM_URL_MAX];
+    volatile bool     s_urlChanged = false;
+    volatile UrlState s_urlState   = URL_NONE;   // of the newest URL; read by the LVGL side
 
     lv_obj_t   *s_screen = nullptr;
     lv_obj_t   *s_canvas = nullptr;   // exists only between onEnter and onExit
@@ -80,10 +86,13 @@ namespace {
 
     // LVGL side only.
     bool  s_active   = false;
-    State s_shown    = ST_IDLE;
-    int   s_shownErr = 0;
+    State    s_shown    = ST_IDLE;
+    int      s_shownErr = 0;
+    UrlState s_shownUrl = URL_NONE;
 
-    bool parse_url(const char *url) {
+    // Split "http://host[:port][/path]". Returns false, and leaves the outputs alone, for
+    // anything else (https included: there is no TLS here).
+    bool parse_url(const char *url, char (&host)[64], uint16_t &port, char (&path)[LIVECAM_URL_MAX]) {
         if (strncmp(url, "http://", 7) != 0) return false;
         const char *p       = url + 7;
         const char *slash   = strchr(p, '/');
@@ -91,14 +100,36 @@ namespace {
         const char *colon   = (const char *)memchr(p, ':', hostEnd - p);
         const char *nameEnd = colon ? colon : hostEnd;
         const size_t hn = (size_t)(nameEnd - p);
-        if (hn == 0 || hn >= sizeof(s_host)) return false;
-        memcpy(s_host, p, hn);
-        s_host[hn] = 0;
-        s_port = colon ? (uint16_t)atoi(colon + 1) : 80;
-        if (s_port == 0) return false;
-        const char *path = slash ? slash : "/";
-        if (strlen(path) >= sizeof(s_path)) return false;
-        strcpy(s_path, path);
+        if (hn == 0 || hn >= sizeof(host)) return false;
+        const long pn = colon ? atol(colon + 1) : 80;
+        if (pn <= 0 || pn > 65535) return false;
+        const char *rest = slash ? slash : "/";
+        if (strlen(rest) >= sizeof(path)) return false;
+        memcpy(host, p, hn);
+        host[hn] = 0;
+        port = (uint16_t)pn;
+        strcpy(path, rest);
+        return true;
+    }
+
+    UrlState classify(const char *url) {
+        if (!url || !url[0]) return URL_NONE;
+        char h[64]; uint16_t pt; char pa[LIVECAM_URL_MAX];
+        return parse_url(url, h, pt, pa) ? URL_OK : URL_BAD;
+    }
+
+    // I/O gives up as soon as the app is left OR a new URL is waiting.
+    bool io_abort() { return s_stop || s_urlChanged; }
+
+    // Task side: take a parked URL, if there is one. Returns true if it changed.
+    bool take_new_url() {
+        if (!s_urlChanged) return false;
+        char next[LIVECAM_URL_MAX];
+        portENTER_CRITICAL(&s_mux);
+        memcpy(next, s_urlNext, sizeof(next));
+        s_urlChanged = false;
+        portEXIT_CRITICAL(&s_mux);
+        if (!parse_url(next, s_host, s_port, s_path)) s_host[0] = 0;
         return true;
     }
 
@@ -108,7 +139,7 @@ namespace {
     // when onExit asks the task to stop, so leaving the app never waits out a full timeout.
     int read_line(WiFiClient &c, char *out, size_t cap, uint32_t deadline) {
         size_t n = 0;
-        while (!s_stop && (int32_t)(millis() - deadline) < 0) {
+        while (!io_abort() && (int32_t)(millis() - deadline) < 0) {
             const int ch = c.read();
             if (ch < 0) {
                 if (!c.connected()) return -1;
@@ -130,7 +161,7 @@ namespace {
         uint8_t sink[256];
         size_t got = 0;
         while (got < len) {
-            if (s_stop || (int32_t)(millis() - deadline) >= 0) return false;
+            if (io_abort() || (int32_t)(millis() - deadline) >= 0) return false;
             const int avail = c.available();
             if (avail <= 0) {
                 if (!c.connected()) return false;
@@ -167,7 +198,7 @@ namespace {
     }
 
     void fail(int err) {
-        if (s_stop) return;   // leaving the app is not an error
+        if (io_abort()) return;   // leaving the app, or a new URL, is not an error
         // Internal RAM is what the TCP stack lives on, and what this board runs short of,
         // so every failure says how much there was.
         Serial.printf("[livecam] failed: %d after %u frames in %u ms, last frame %u ms ago, "
@@ -225,7 +256,7 @@ namespace {
         char line[160];
         if (read_line(c, line, sizeof(line), deadline) < 0) {
             c.stop();
-            if (!fresh && !s_stop) return run_request(c);   // same, noticed one step later
+            if (!fresh && !io_abort()) return run_request(c);   // same, noticed one step later
             fail(ERR_NO_ANSWER); return false;
         }
         int status = 0;
@@ -288,7 +319,7 @@ namespace {
     // Sleep in short steps so a stop request is noticed at once.
     void pause_ms(uint32_t ms) {
         const uint32_t until = millis() + ms;
-        while (!s_stop && (int32_t)(millis() - until) < 0) vTaskDelay(pdMS_TO_TICKS(20));
+        while (!io_abort() && (int32_t)(millis() - until) < 0) vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     // Everything between one onEnter and the matching onExit: take the buffers, keep a
@@ -308,6 +339,14 @@ namespace {
 
             WiFiClient c;
             while (!s_stop) {
+                if (take_new_url()) {
+                    c.stop();                    // the old camera's connection
+                    s_lastErr = 0;
+                    s_state = ST_CONNECTING;
+                    if (s_host[0]) Serial.printf("[livecam] URL is now %s:%u%s\n", s_host, (unsigned)s_port, s_path);
+                    else           Serial.println("[livecam] URL is now none (empty or not http://)");
+                }
+                if (!s_host[0]) { pause_ms(500); continue; }   // no usable URL: wait for one
                 const bool snapshot = run_request(c);
                 pause_ms(snapshot                      ? LIVECAM_SNAPSHOT_MS
                        : s_lastErr == ERR_STREAM_LOST ? LIVECAM_STALL_RETRY_MS
@@ -435,9 +474,12 @@ namespace {
 
     // Only called when there is no recent picture: a reconnect the viewer cannot see is not
     // worth announcing, and flipping between messages every couple of seconds was worse.
-    void show_state(State st, int err) {
-        char t[96];
-        if (!s_urlOk)               snprintf(t, sizeof(t), "LIVECAM_URL in secrets.h\nmust start with http://");
+    void show_state(State st, int err, UrlState us) {
+        char t[128];
+        // Where to set it is on the screen itself: the person looking at this has no reason
+        // to have read a README.
+        if (us == URL_NONE)         snprintf(t, sizeof(t), "NO STREAM SET\n\nSettings > Livestream\nor theorb.local/livestream");
+        else if (us == URL_BAD)     snprintf(t, sizeof(t), "THE STREAM URL MUST\nSTART WITH http://\n\nSettings > Livestream");
         else if (st != ST_ERROR)    snprintf(t, sizeof(t), "CONNECTING...");
         else if (err >= 100)        snprintf(t, sizeof(t), "NO SIGNAL\nHTTP %d", err);
         else if (err == ERR_NO_WIFI) snprintf(t, sizeof(t), "NO SIGNAL\nno WiFi");
@@ -449,17 +491,18 @@ namespace {
     void tick_cb(lv_timer_t * /*t*/) {
         if (!s_active) return;
 
+        const UrlState us   = s_urlState;
         const uint32_t last = s_lastFrameMs;
-        const bool recent = s_urlOk && last && (millis() - last) < LIVECAM_STALE_MS;
+        const bool recent = us == URL_OK && last && (millis() - last) < LIVECAM_STALE_MS;
         // A stream that has stalled past LIVECAM_STALE_MS without failing yet reads as
         // connecting, which is what it is doing.
-        State st = !s_urlOk ? ST_ERROR : (recent ? ST_LIVE : s_state);
+        State st = us != URL_OK ? ST_ERROR : (recent ? ST_LIVE : s_state);
         if (st == ST_LIVE && !recent) st = ST_CONNECTING;
         const int err = s_lastErr;
-        if (st != s_shown || (st == ST_ERROR && err != s_shownErr)) {
+        if (st != s_shown || us != s_shownUrl || (st == ST_ERROR && err != s_shownErr)) {
             if (st == ST_LIVE) lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
-            else               show_state(st, err);
-            s_shown = st; s_shownErr = err;
+            else               show_state(st, err, us);
+            s_shown = st; s_shownErr = err; s_shownUrl = us;
         }
 
         int idx;
@@ -480,9 +523,24 @@ namespace {
 
 } // namespace
 
-void livecamview::init() {
-    s_urlOk = parse_url(LIVECAM_URL);
-    if (!s_urlOk) Serial.println("[livecam] LIVECAM_URL is not an http:// URL; the app will say so");
+void livecamview::setUrl(const char *url) {
+    if (!url) url = "";
+    portENTER_CRITICAL(&s_mux);
+    strncpy(s_urlNext, url, sizeof(s_urlNext) - 1);
+    s_urlNext[sizeof(s_urlNext) - 1] = 0;
+    s_urlChanged = true;
+    portEXIT_CRITICAL(&s_mux);
+    s_urlState = classify(url);
+    s_lastFrameMs = 0;   // the picture on screen belongs to the old URL
+}
+
+void livecamview::init(const char *url) {
+    // Before the task exists, so it is applied directly rather than parked.
+    if (!url) url = "";
+    s_urlState = classify(url);
+    if (s_urlState != URL_OK || !parse_url(url, s_host, s_port, s_path)) s_host[0] = 0;
+    Serial.printf("[livecam] URL %s\n", s_urlState == URL_OK   ? url
+                                      : s_urlState == URL_NONE ? "(none set)" : "(not http://)");
 
     s_screen = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_screen, lv_color_black(), 0);
@@ -503,7 +561,7 @@ void livecamview::init() {
 
     lv_timer_create(tick_cb, LIVECAM_TICK_MS, nullptr);
 
-    if (s_urlOk && xTaskCreatePinnedToCore(stream_task, "livecam", TASK_STACK, nullptr, 1, &s_task, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stream_task, "livecam", TASK_STACK, nullptr, 1, &s_task, 0) != pdPASS) {
         s_task = nullptr;
         Serial.println("[livecam] could not create the stream task");
         diag::log("livecam could not create its stream task");
@@ -531,8 +589,8 @@ void livecamview::onEnter() {
     s_lastFrameMs = 0;
     s_state = ST_CONNECTING;
     s_active = true;
-    if (!s_urlOk) return;
-
+    // The task is woken even without a usable URL: one can arrive from the web page while
+    // this screen is open, and the task is what picks it up.
     if (!s_task) { s_lastErr = ERR_NO_TASK; s_state = ST_ERROR; return; }
     s_stop = false;
     xTaskNotifyGive(s_task);

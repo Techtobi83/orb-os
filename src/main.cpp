@@ -56,7 +56,7 @@
 #include "custom_boot_target.h"       // CUSTOM_BOOT_TARGET — set by whichever Launch Kit push (clock/splash/radar) ran last
 #include "custom_apps.h"              // CUSTOM_APP_* — which apps a theme flash includes in the menu
 #include "spycam_view.h"             // Spy Cam: looping "security camera" flip-book
-#include "livecam_view.h"            // Live Cam: a network camera, when secrets.h names one
+#include "livecam_view.h"            // Livestream: a network camera, URL set on the device
 #include "intel_view.h"
 #include "ticker_view.h"
 #include "ticker.h"              // world headlines, read through the gateway
@@ -779,6 +779,40 @@ static void onRangeChange(float km) {
 // Settings > Range hooks (declared extern in settings_view.cpp).
 float host_get_range_km() { return g_settings.rangeKm; }
 void  host_set_range_km(float km) { onRangeChange(km); }
+
+// The Livestream app's camera URL. Two front doors set it, Settings > Livestream on the
+// knob and the /livestream web page, and both come through host_livestream_url_set, so
+// the trimming, the length limit, the NVS write and the hand-over to the running app are
+// the same whichever one was used.
+static char g_livestreamUrl[LIVECAM_URL_MAX] = "";
+
+void host_livestream_url_get(char *out, size_t n) { snprintf(out, n, "%s", g_livestreamUrl); }
+
+void host_livestream_url_set(const char *url) {
+    if (!url) url = "";
+    while (*url == ' ' || *url == '\t') ++url;                  // a pasted URL often
+    size_t n = strnlen(url, sizeof(g_livestreamUrl) - 1);       // carries a space
+    while (n && (url[n - 1] == ' ' || url[n - 1] == '\t' || url[n - 1] == '\r' || url[n - 1] == '\n')) --n;
+    memcpy(g_livestreamUrl, url, n);
+    g_livestreamUrl[n] = 0;
+    Preferences p;
+    p.begin("capsuleradar", false);
+    p.putString("lsUrl", g_livestreamUrl);
+    p.end();
+#if LIVECAM_ENABLED
+    livecamview::setUrl(g_livestreamUrl);
+#endif
+    diag::log("livestream url set (%u chars)", (unsigned)n);
+}
+
+// Boot: the saved URL, or secrets.h's LIVECAM_URL (usually "") until one has been saved.
+static void load_livestream_url() {
+    Preferences p;
+    p.begin("capsuleradar", true);
+    if (p.isKey("lsUrl")) p.getString("lsUrl", g_livestreamUrl, sizeof(g_livestreamUrl));
+    else                  snprintf(g_livestreamUrl, sizeof(g_livestreamUrl), "%s", LIVECAM_URL);
+    p.end();
+}
 
 // Persist the visual theme in NVS (called when the user long-presses to switch).
 static void saveTheme(int t) {
@@ -2029,6 +2063,43 @@ static void handleAlerts() {   // what triggers the alert sound (live)
     g_web.send(200, "text/plain", "ok");
 }
 
+// http://theorb.local/livestream: the Livestream camera URL from a phone or a laptop, which
+// beats spelling sixty characters with a knob. GET shows the form, a submit saves.
+static void html_escape_into(String &out, const char *s) {
+    for (; *s; ++s) {
+        switch (*s) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            default:   out += *s;
+        }
+    }
+}
+
+static void handleLivestream() {
+    const bool saved = g_web.hasArg("url");
+    if (saved) host_livestream_url_set(g_web.arg("url").c_str());
+    String h;
+    h.reserve(1400);
+    h += "<!doctype html><html><head><meta charset=utf-8>"
+         "<meta name=viewport content='width=device-width,initial-scale=1'>"
+         "<title>Livestream</title><style>"
+         "body{font-family:system-ui,sans-serif;background:#111;color:#eee;max-width:34em;margin:2em auto;padding:0 1em}"
+         "input{width:100%;box-sizing:border-box;font-size:1em;padding:.5em;margin:.5em 0;background:#222;color:#eee;border:1px solid #555}"
+         "button{font-size:1em;padding:.5em 1.5em}p.s{color:#8c8}small{color:#999}"
+         "</style></head><body><h2>Livestream</h2>";
+    if (saved) h += "<p class=s>Saved. The Orb uses it now.</p>";
+    h += "<form method=post action=/livestream><label>Camera URL<input name=url value=\"";
+    html_escape_into(h, g_livestreamUrl);
+    h += "\" placeholder='http://192.168.1.10:1984/api/stream.mjpeg?src=camera'></label>"
+         "<button type=submit>Save</button></form>"
+         "<p><small>A plain http:// MJPEG stream or JPEG snapshot URL, e.g. go2rtc's "
+         "/api/stream.mjpeg?src=NAME. Keep frames small (about 466x262, a few KB each). "
+         "Leave it empty to clear it.</small></p></body></html>";
+    g_web.send(200, "text/html", h);
+}
+
 static void handleIdle() {   // idle auto-dim timeout (seconds; 0 = never)
     if (g_web.hasArg("v")) {
         const long s = g_web.arg("v").toInt();
@@ -2717,7 +2788,8 @@ void setup() {
                    tickerview::onEnter, tickerview::onExit, !theme_style::apps().ticker);  // turn steps the watchlist; onEnter takes the strip canvas only when the design curves it
 #endif
 #if LIVECAM_ENABLED
-    livecamview::init();
+    load_livestream_url();
+    livecamview::init(g_livestreamUrl);
     psram_mark("after livecamview");
     app_shell::add(livecamview::screen(), LIVECAM_NAME, nullptr, nullptr, false,
                    livecamview::onEnter, livecamview::onExit, false);  // onEnter opens the stream, onExit closes it
@@ -3125,6 +3197,7 @@ void setup() {
     g_web.on("/vol", handleVol);
     g_web.on("/alerts", handleAlerts);
     g_web.on("/idle", handleIdle);
+    g_web.on("/livestream", handleLivestream);   // the Livestream app's camera URL
     g_web.on("/sweep", handleSweep);
     g_web.on("/airports", handleAirports);
     g_web.on("/ground", handleGround);

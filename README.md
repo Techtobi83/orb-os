@@ -21,14 +21,15 @@ relevant.
 
 ## What it does
 
-Four screens, reached by rocking the knob to open the app menu and turning to choose:
+Five screens, reached by rocking the knob to open the app menu and turning to choose:
 
 - **Clock**: analogue hands over the theme's own dial, with optional date and second banners, hand shadows, a plate that can turn with a hand, and a chime on the hour if you turn that on.
 - **Flight tracker**: live traffic from [adsb.lol](https://api.adsb.lol), a sweep, trails, coastlines, roads and airports, with a card for the selected aircraft and up to three readout lines the theme composes itself.
 - **News**: headlines from BBC, the Guardian or NASA. Turn to move the highlight, press to read the story's own summary in the same band the list was in.
-- **Settings**: display, location, sound, units, range, WiFi, theme, and About, on a knob-driven wheel.
+- **Livestream**: one network camera full screen, from any plain-HTTP MJPEG stream or JPEG snapshot URL (for example go2rtc's `/api/stream.mjpeg?src=NAME`), zoomed to fill the round display. See [Livestream](#livestream) below.
+- **Settings**: display, location, sound, units, range, livestream URL, WiFi, theme, and About, on a knob-driven wheel.
 
-A weather radar, a stock ticker and a camera view are in the tree but compiled out of launch one (`APPS_LAUNCH_ONE` in [`src/config.h`](src/config.h)), so they are absent from the menu rather than present and switched off.
+A weather radar, a stock ticker and the older Spy Cam flip-book are in the tree but compiled out of launch one (`APPS_LAUNCH_ONE` in [`src/config.h`](src/config.h)), so they are absent from the menu rather than present and switched off.
 
 Every one of them is dressed by a **theme**: a folder of baked artwork and JSON on the SD card, designed in [Orb Studio](https://zionbrock.com/orb) in a browser and sent over USB. Backgrounds, glass and CRT overlays, typefaces, colours, opacity, glow, layer order and layout are the theme's to choose. Themes are switched on the device itself under **Settings → Theme**, with no computer needed.
 
@@ -79,6 +80,35 @@ It reads the same theme folders from `sim/sdcard/themes/`, makes the same networ
 
 `http://theorb.local/` on the same WiFi, or the device's IP, for centre point, range, brightness, sound, WiFi reset and an over-the-air firmware upload. Settings live in NVS under the `capsuleradar` namespace, which keeps its old name deliberately: renaming it would make every existing Orb look factory reset.
 
+## Livestream
+
+The Livestream app shows a camera whose URL you set on the Orb itself. Nothing about a camera is compiled into the firmware, so a fork can be public without publishing anybody's camera address.
+
+Set the URL either way:
+
+- **In a browser**: open `http://theorb.local/livestream` (or the Orb's IP followed by `/livestream`), paste the URL, press Save. This is the easy way.
+- **On the device**: **Settings → Livestream**, then turn to a character and push to add it. `DEL` removes the last character, `OK` saves, `Back` leaves without saving. It opens on the saved URL, so changing a stream name or port is an edit at the end.
+
+The new URL is used at once; no restart. An empty URL clears it, and the app then says where to set one.
+
+What works:
+
+- `http://` only. There is no TLS on this path.
+- An MJPEG stream (`multipart/x-mixed-replace`) whose parts carry `Content-Length`, or a URL that returns a single JPEG.
+- Baseline JPEG, which is what ffmpeg produces.
+- **Small frames.** On a real Orb, 640x360 frames of about 6 KB stalled every few seconds, while 466x262 frames of about 3.7 KB at 3 fps ran cleanly. With [go2rtc](https://github.com/AlexxIT/go2rtc) a dedicated source does this, for example:
+
+  ```yaml
+  streams:
+    garden_orb: "exec:ffmpeg -rtsp_transport tcp -i rtsp://CAMERA/STREAM -an -vf scale=466:262,fps=3 -q:v 28 -f mpjpeg pipe:1"
+  ```
+
+  and the Orb's URL is then `http://GO2RTC_HOST:1984/api/stream.mjpeg?src=garden_orb`. Use the `/api/stream.mjpeg` address, not `stream.html`, which is a player page for browsers.
+
+The Orb's WiFi signal matters more than the camera: at around -80 dBm the stream stalls and reconnects. The serial log prints the RSSI with every reconnect.
+
+For development only, `src/secrets.h` (gitignored; copy [`src/secrets.example.h`](src/secrets.example.h)) can hold a `LIVECAM_URL` that a freshly flashed Orb uses until one is saved on the device.
+
 ## Repo layout
 
 ```
@@ -91,6 +121,7 @@ src/
   clock_view.*        the clock
   radar_view.*        the flight tracker scope (and the weather radar, out of launch one)
   intel_view.*        the news screen  (named intel for historical reasons)
+  livecam_view.*      the Livestream app (network camera)
   settings_view.*     the settings wheel
   spycam_view.*       surveillance (out of launch one)
   theme_style.*       the theme model and THEME_CAPS

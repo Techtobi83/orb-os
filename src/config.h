@@ -35,22 +35,30 @@
 // device pretending it never understood them.
 #define APPS_LAUNCH_ONE 1
 
-// ---------- Live Cam (network camera app) ----------
-// Built only when src/secrets.h exists and defines LIVECAM_URL, so the stock firmware and
-// the desktop simulator are unchanged, and a camera's address never reaches the public
-// repo (secrets.h is in .gitignore). Copy src/secrets.example.h to src/secrets.h to turn it
-// on. Independent of APPS_LAUNCH_ONE: switching this on brings back nothing else.
+// ---------- Livestream (network camera app) ----------
+// Shows one camera's MJPEG stream (or snapshot URL) full screen. The URL is set on the
+// device, in Settings > Livestream (knob), or from a browser at http://theorb.local/livestream,
+// and kept in NVS. Nothing about a camera is compiled in: a fork is public, and a camera
+// address in the source would be too.
+//
+// Optional: src/secrets.h (gitignored; see secrets.example.h) may define LIVECAM_URL as the
+// URL to use until one has been set on the device. Handy while developing, never needed.
+//
+// Always built for the device; never for the desktop simulator, which has no socket code
+// for it. Independent of APPS_LAUNCH_ONE: this brings back nothing else.
 #if defined(ARDUINO) && __has_include("secrets.h")
 #include "secrets.h"
 #endif
-#if defined(ARDUINO) && defined(LIVECAM_URL)
+#ifdef ARDUINO
 #define LIVECAM_ENABLED 1
 #else
 #define LIVECAM_ENABLED 0
 #endif
-#ifndef LIVECAM_NAME
-#define LIVECAM_NAME        "Live Cam"   // the knob menu's label for it
+#ifndef LIVECAM_URL
+#define LIVECAM_URL         ""           // no camera until one is set on the device
 #endif
+#define LIVECAM_NAME        "Livestream" // the knob menu's label for it
+#define LIVECAM_URL_MAX     160          // longest URL kept, terminator included
 #define LIVECAM_JPEG_MAX    (128 * 1024) // largest frame accepted; 640x360 at -q:v 28 is ~20-40 KB
 #define LIVECAM_CONNECT_MS  3000         // TCP connect timeout
 #define LIVECAM_ANSWER_MS   15000        // first reply; go2rtc starts ffmpeg + RTSP on demand, which is slow

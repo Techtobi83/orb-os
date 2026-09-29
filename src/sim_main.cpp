@@ -211,6 +211,11 @@ void host_factory_reset() {}
 bool host_wx_is_imperial() { return false; }
 int  host_wx_units_mode() { return 0; }
 void host_wx_units_set(int) {}
+// Settings > Livestream. The simulator has no Livestream app; it only keeps the text, so
+// the entry page can be exercised.
+static char s_simLivestreamUrl[LIVECAM_URL_MAX] = "";
+void host_livestream_url_get(char *out, size_t n) { snprintf(out, n, "%s", s_simLivestreamUrl); }
+void host_livestream_url_set(const char *url) { snprintf(s_simLivestreamUrl, sizeof(s_simLivestreamUrl), "%s", url ? url : ""); }
 // Settings > Range. The real host persists to NVS and re-queries the feed; the sim just
 // holds the value and re-renders, which is enough to exercise the menu and the scope.
 static float s_simRangeKm = RANGE_KM_DEFAULT;
