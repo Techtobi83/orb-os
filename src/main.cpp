@@ -261,8 +261,7 @@ static void adsb_task(void*) {
         // Whether the theme has a Flight Tracker at all. A theme that hides it entirely has
         // no reachable screen and no reason to fetch. Whether anyone is LOOKING at it is a
         // separate question, answered below by g_radarViewActive, and it decides how often
-        // the feed is asked: full rate on screen, a slow keep-warm for a while after, then
-        // nothing until the tracker is opened again.
+        // the feed is asked: full rate on screen, and not at all otherwise (see below).
         const bool radarActive = theme_style::apps().flight;
         if (radarActive && !wasRadarActive) {
             // First tick after boot (or after a theme switch turns Flight Tracker back
@@ -339,20 +338,23 @@ static void adsb_task(void*) {
             // for as long as the theme had a Flight Tracker, clock or no clock, all night:
             // thousands of requests a day to a free public service for data nobody looked
             // at, which CanadianAvenger measured off the serial line and rightly called
-            // unfriendly. Now: the tracker on screen polls at the full rate; for ten minutes
-            // after it was last on screen (or after boot) it polls once a minute, so a quick
-            // return finds a warm scope; after that it stops, and opening the tracker polls
-            // at once. The "Loading aircraft" notice covers that first second or two.
-            static uint32_t s_lastOnScreenMs = 0;
-            static bool     s_wasOnScreen = false;
+            // unfriendly. Now: the tracker on screen polls at the full rate, and off screen it
+            // does not poll at all; opening it polls at once, and the "Loading aircraft"
+            // notice covers that first second or two.
+            //
+            // This fork dropped the ten-minute once-a-minute keep-warm that followed leaving
+            // the tracker. Its polls, and the kept-alive socket between them, cost internal
+            // RAM that the Live Cam's stream needs: with the Cold War theme the largest free
+            // block fell to 1.5 KB with both running. Leaving the tracker now also closes the
+            // feed's socket.
+            static bool s_wasOnScreen = false;
             const bool onScreen = g_radarViewActive;
-            if (onScreen) s_lastOnScreenMs = nowMs;
             if (onScreen && !s_wasOnScreen) lastPoll = 0;      // just opened: ask now
+            if (!onScreen && s_wasOnScreen) g_adsb.close();    // just left: give the socket back
             s_wasOnScreen = onScreen;
-            const bool warm = onScreen || (nowMs - s_lastOnScreenMs) < 600000UL;
+            const bool warm = onScreen;
             const uint32_t baseInterval =
                 g_pollOverrideMs ? g_pollOverrideMs
-              : !onScreen        ? 60000UL
               : g_onBattery      ? POLL_INTERVAL_BATTERY_MS
                                  : POLL_INTERVAL_MS;
             const uint32_t pollInterval = baseInterval + adsbBackoffMs;

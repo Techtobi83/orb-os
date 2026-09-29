@@ -22,6 +22,11 @@ public:
     // On failure, leaves `out` untouched and returns false (caller keeps last good).
     bool poll(std::vector<Aircraft>& out);
 
+    // Drop the kept-alive socket. Called from the polling task when the Flight Tracker
+    // leaves the screen: an idle open connection still holds internal RAM (lwIP control
+    // block and buffers), which other apps need. The next poll() simply reconnects.
+    void close() { _plain.stop(); }
+
     uint32_t lastOkMs() const { return _lastOkMs; }
 
     // True when the last poll failed because a SERVER said no (any 4xx), rather than because
