@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.17.0"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.17.1"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -165,6 +165,12 @@ static const float RANGE_STEPS_KM[] = {10.0f, 20.0f, 30.0f, 50.0f, 100.0f};
 // ---------- Weather forecast (Open-Meteo, no API key) ----------
 #define WEATHER_REFRESH_MS  1800000UL      // 30 minutes; forecast data changes slowly
 #define WX_RADAR_REFRESH_MS 300000UL       // RainViewer frames update about every 5 minutes
+// Weakest tile pixel that counts as precipitation. RainViewer's scheme 2 draws precipitation
+// fully opaque (blues) and the weak-echo band below it (ground clutter, virga, drizzle too
+// light to measure) as a translucent grey-beige, alpha 20..190. Drawing that band made a dry
+// day in the Sauerland on 2026-09-29 look like widespread rain: 96% of the "rain" pixels in
+// that tile were translucent, and every forecast app said 0 mm. 255 = measurable only.
+#define WX_RADAR_MIN_ALPHA  255
 #define CLOUD_IMAGE_REFRESH_MS 600000UL    // EUMETSAT MTG cloud imagery; cache for 10 minutes
 
 // ---------- Screen (CO5300 AMOLED) ----------

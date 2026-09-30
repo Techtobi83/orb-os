@@ -469,7 +469,7 @@ static int radar_png_line(PNGDRAW *draw) {
         // composite_zoom() reads this buffer, not "paint it black".
         const uint8_t *src = draw->pPixels;
         for (int x = 0; x < draw->iWidth; ++x, src += 4) {
-            if (src[3] < 20) { line[x] = 0; continue; }   // transparent: no precipitation here
+            if (src[3] < WX_RADAR_MIN_ALPHA) { line[x] = 0; continue; }   // transparent, or a weak echo that is not precipitation (config.h)
             uint16_t rgb = (uint16_t)((src[2] >> 3) | ((src[1] >> 2) << 5) | ((src[0] >> 3) << 11));
             line[x] = rgb ? rgb : 1;   // never let real (if coincidentally black) data read as "no data"
         }
