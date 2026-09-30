@@ -134,7 +134,11 @@ void seed_defaults() {
     s_assetsHash = 0;
     s_apps.clock        = (bool)CUSTOM_APP_CLOCK;
     s_apps.flight       = (bool)CUSTOM_APP_FLIGHT;
-    s_apps.weather      = (bool)CUSTOM_APP_WEATHER;
+    // On whenever the build carries it. custom_apps.h says 0 because the last Launch Kit
+    // push was written while CUT-01 had the app out of every build, so that 0 records a
+    // build that could not show weather, not a design that declined it. A theme.json that
+    // says "weather": false still wins below, and main.cpp logs it at boot.
+    s_apps.weather      = (bool)CUSTOM_APP_WEATHER || WEATHER_ENABLED;
     s_apps.surveillance = (bool)CUSTOM_APP_SURVEILLANCE;
     s_apps.headlines    = (bool)CUSTOM_APP_HEADLINES;
 

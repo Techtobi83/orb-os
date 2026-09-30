@@ -647,10 +647,12 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
                    []() { ui_show_view(0); radar::knobEnter(); }, // onEnter: show scope, then land in default view
                    radar::knobExit,                               // onExit: free style + reset selection
                    !theme_style::apps().flight);
-#if !APPS_LAUNCH_ONE
+#if WEATHER_ENABLED
     app_shell::add(radarScreen, theme_style::names().weather,
                    []() { static bool fc = false; fc = !fc; ui_set_weather_forecast(fc); },  // push toggles WX/forecast
                    nullptr, false, []() { wx_map_prepare(g_set.homeLat, g_set.homeLon, 0); ui_weather_art_attach(); ui_show_view(1); }, nullptr, !theme_style::apps().weather);
+#endif
+#if !APPS_LAUNCH_ONE
     app_shell::add(survScreen,  theme_style::names().surveillance, nullptr, nullptr, false, nullptr, nullptr, !theme_style::apps().surveillance);
 #else
     (void)survScreen;   // built above; not on launch one's roster (CUT-01)
@@ -1784,13 +1786,13 @@ int main(int argc, char **argv) {
         static Uint32 wxAt = 0;
         if (wxShot) {
             if (wxStep == 0 && now - start > 3000) {
-#if APPS_LAUNCH_ONE
+#if !WEATHER_ENABLED
                 // The weather map is not on this build's roster (CUT-01), so there is
                 // nothing for this harness to photograph. Said rather than silently
                 // capturing whatever screen happens to be up, which is how the --shot
                 // harness quietly photographed the Clock for six weeks.
                 printf("[sim] --wxshot: the weather map is not in this build "
-                       "(APPS_LAUNCH_ONE in config.h). Nothing to capture.\n");
+                       "(WEATHER_ENABLED in config.h). Nothing to capture.\n");
                 run = false;
 #else
                 app_shell::selectApp(app_shell::APP_WEATHER);

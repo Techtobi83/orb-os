@@ -472,7 +472,7 @@ static void adsb_task(void*) {
             if (g_wxOpened) {
                 g_wxOpened = false;
                 wx_phase_set(WX_PHASE_BUFFERS);
-#if !APPS_LAUNCH_ONE
+#if WEATHER_ENABLED
                 if (theme_style::apps().weather) wx_radar_begin();
 #endif
                 wxFillIdx = 0; ++wxGen; nextWxRadarAt = nowMs;
@@ -2764,12 +2764,12 @@ void setup() {
     // onEnter takes the canvas, onExit gives it back. It answers neither a turn nor a press.
     app_shell::add(clockview::screen(), theme_style::names().clock, nullptr, nullptr, false, clockview::onEnter, clockview::onExit, !theme_style::apps().clock);
     app_shell::add(radarScreen, theme_style::names().flight, radar_press_custom_or_theme, radar_turn_select, false, radar_show_home_custom, radar_exit_release_style, !theme_style::apps().flight);
-#if !APPS_LAUNCH_ONE
+#if WEATHER_ENABLED
     app_shell::add(radarScreen, theme_style::names().weather,  weather_press_cycle, nullptr, false, radar_show_weather, radar_hide_weather, !theme_style::apps().weather);
-    spycamview::init();
-    psram_mark("after spycamview");
 #endif
 #if !APPS_LAUNCH_ONE
+    spycamview::init();
+    psram_mark("after spycamview");
     app_shell::add(spycamview::screen(), theme_style::names().surveillance, spycamview::onPress, spycamview::onTurn, false, nullptr, nullptr, !theme_style::apps().surveillance);  // push cycles cams; clip loads lazily on commit
 #endif
     // Intel before Settings. It used to be appended after, purely because the jumps below
@@ -2810,7 +2810,9 @@ void setup() {
     {
         const theme_style::Apps &ta = theme_style::apps();
         const struct { bool want; const char *name; } cut[] = {
+#if !WEATHER_ENABLED
             { ta.weather,      "Weather Radar" },
+#endif
             { ta.surveillance, "Surveillance"  },
             { ta.ticker,       "Stock Ticker"  },
         };
@@ -2820,6 +2822,13 @@ void setup() {
                               "(CUT-01, APPS_LAUNCH_ONE in config.h). Its settings are still "
                               "read and kept; nothing draws them.\n", c.name);
     }
+#endif
+#if WEATHER_ENABLED
+    // The reverse case: the build carries the weather radar and the theme hides it. Legal,
+    // but the knob then skips it with nothing on screen to say why.
+    if (!theme_style::apps().weather)
+        Serial.println("[shell] this build carries \"Weather Radar\" but the theme's theme.json "
+                       "sets \"weather\": false, so the knob menu skips it.");
 #endif
     app_shell::verifySlots(settingsview::screen());
     app_shell::begin();                // start on the clock (index 0 — see comment above)

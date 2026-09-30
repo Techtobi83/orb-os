@@ -46,11 +46,14 @@ namespace app_shell {
     // roster for launch one. The slots go with them rather than being left as holes:
     // a slot naming an app nobody registers is the fault verifySlots() exists to catch,
     // and leaving three of them deliberately would make the check cry wolf for ever.
+    // Weather has its own switch (WEATHER_ENABLED) and comes back on its own.
     enum Slot {
         APP_CLOCK = 0,
         APP_FLIGHT,
-#if !APPS_LAUNCH_ONE
+#if WEATHER_ENABLED
         APP_WEATHER,
+#endif
+#if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif
         APP_INTEL,

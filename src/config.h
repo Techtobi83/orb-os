@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.16.36"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.17.0"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -34,6 +34,17 @@
 // at 34 for the same reason; Studio hides the controls behind its own flag rather than the
 // device pretending it never understood them.
 #define APPS_LAUNCH_ONE 1
+
+// ---------- Weather radar, carried despite APPS_LAUNCH_ONE ----------
+// A deliberate exception to CUT-01, asked for by the owner on 2026-09-29: the round
+// RainViewer radar centred on the Flight Tracker's home location comes back on its own,
+// while Surveillance and the Ticker stay off. The app itself is unchanged; only its gate
+// moved. Setting this to 0 (with APPS_LAUNCH_ONE 1) returns the build to exactly launch
+// one's roster.
+//
+// Everything that decides whether the weather app is in the build asks WEATHER_ENABLED,
+// never APPS_LAUNCH_ONE directly, so the two switches cannot disagree at one call site.
+#define WEATHER_ENABLED (1 || !APPS_LAUNCH_ONE)
 
 // ---------- Livestream (network camera app) ----------
 // Shows one camera's MJPEG stream (or snapshot URL) full screen. The URL is set on the
