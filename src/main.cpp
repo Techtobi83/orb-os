@@ -556,7 +556,9 @@ static void adsb_task(void*) {
             // Intel. One plain-HTTP request against a cached gateway response, well under
             // a kilobyte, so there is nothing to spread over several cycles. fetchStep() owns its own timing and returns immediately when
             // nothing is due, which is almost every pass through this loop.
+#if NEWS_ENABLED
             if (intelview::fetchStep()) g_intelDirty = true;
+#endif
             // Quotes, through the same gateway and for the same reason. Well under a
             // kilobyte for a whole watchlist, so like the headlines there is nothing here
             // worth spreading over several passes; the step owns its own timing and returns
@@ -2777,10 +2779,12 @@ void setup() {
     // were written as bare integers and moving anything would have pointed the jumps at
     // the wrong screen. They name app_shell::Slot now, so the menu can be ordered the way it
     // should read: Settings last, after everything it configures.
+#if NEWS_ENABLED
     intelview::init();
     psram_mark("after intelview");
     app_shell::add(intelview::screen(), theme_style::names().headlines,
                    intelview::onPress, intelview::onTurn, false, intelview::onEnter, intelview::onExit, !theme_style::apps().headlines);  // push fetches now, or toggles scroll mode when the type size overflows; onEnter resets to the top
+#endif
 #if !APPS_LAUNCH_ONE
     tickerview::init();
     psram_mark("after tickerview");
@@ -2816,11 +2820,14 @@ void setup() {
 #endif
             { ta.surveillance, "Surveillance"  },
             { ta.ticker,       "Stock Ticker"  },
+#if !NEWS_ENABLED
+            { ta.headlines,    "News"          },
+#endif
         };
         for (const auto &c : cut)
             if (c.want)
                 Serial.printf("[shell] theme asks for \"%s\" but this build does not carry it "
-                              "(CUT-01, APPS_LAUNCH_ONE in config.h). Its settings are still "
+                              "(APPS_LAUNCH_ONE / NEWS_ENABLED in config.h). Its settings are still "
                               "read and kept; nothing draws them.\n", c.name);
     }
 #endif
@@ -3444,10 +3451,12 @@ void loop() {
     // here. Cheap enough to do whether or not the screen is showing: it is five short
     // label writes, and doing it now means the screen is already right when someone
     // turns the knob to it rather than blank for a moment.
+#if NEWS_ENABLED
     if (g_intelDirty) {
         g_intelDirty = false;
         intelview::onHeadlinesReady();
     }
+#endif
     if (g_tickerDirty) {
         g_tickerDirty = false;
         tickerview::onQuotesReady();

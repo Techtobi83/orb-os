@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.18.1"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.19.0"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -45,6 +45,14 @@
 // Everything that decides whether the weather app is in the build asks WEATHER_ENABLED,
 // never APPS_LAUNCH_ONE directly, so the two switches cannot disagree at one call site.
 #define WEATHER_ENABLED (1 || !APPS_LAUNCH_ONE)
+
+// ---------- News (headlines), switched off on this Orb ----------
+// The owner has no use for News and asked for it gone (2026-09-30), which departs from
+// CUT-01, where launch one is Clock, Flight Tracker, News and Settings. At 0 the build
+// carries no News app, no headline fetching and no News typefaces in memory. The source
+// stays, dormant, so a theme's intel_style.json is still parsed (TC-008) and 1 brings the
+// app back exactly as it was.
+#define NEWS_ENABLED 0
 
 // ---------- Touch: swipe sideways to change app ----------
 // The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds

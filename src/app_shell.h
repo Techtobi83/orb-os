@@ -56,7 +56,9 @@ namespace app_shell {
 #if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif
-        APP_INTEL,
+#if NEWS_ENABLED
+        APP_INTEL,       // News (config.h)
+#endif
 #if !APPS_LAUNCH_ONE
         APP_TICKER,
 #endif

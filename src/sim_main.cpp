@@ -665,6 +665,7 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
     // the comment below claims to protect, since selectApp(APP_INTEL) landed on Settings.
     // Nothing failed, nothing logged, and the screen simply could not be reached in the
     // simulator. Found by driving the knob to it and photographing Settings instead.
+#if NEWS_ENABLED
     intelview::init();
     // Fetch once, synchronously, the way the location app's own sim path does: the device
     // does this from its network task, which the simulator has no equivalent of, and a
@@ -672,6 +673,7 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
     if (intelview::fetchStep()) intelview::onHeadlinesReady();
     app_shell::add(intelview::screen(), theme_style::names().headlines,
                    intelview::onPress, intelview::onTurn, false, intelview::onEnter, intelview::onExit, !theme_style::apps().headlines);
+#endif
     // The Stock Ticker, between News and Settings, matching main.cpp. Fetched once here for
     // the same reason News is: the device does this from a network task the simulator has
     // no equivalent of, and a headless screenshot of an empty screen tells nobody anything.
@@ -1256,6 +1258,9 @@ int main(int argc, char **argv) {
         // the Flight Tracker's selection, but only when the theme's type size actually
         // overflows the dial. With everything fitting, a push stays a refresh and must
         // NOT capture — both behaviours are asserted, whichever this theme exhibits.
+#if !NEWS_ENABLED
+        printf("[selftest] Intel scroll: SKIP (no News in this build, NEWS_ENABLED in config.h)\n");
+#else
         app_shell::setCaptured(false);
         if (app_shell::browsing()) press();
         app_shell::selectApp(app_shell::APP_INTEL); pump();          // Intel (the news screen); onEnter resets to the top
@@ -1278,6 +1283,7 @@ int main(int argc, char **argv) {
         const bool iOk = iScrollable ? (iCap1 && iTurnOk && !iCap2)
                                      : (!iCap1 && iTurnOk && !iCap2);
         printf("[selftest] Intel scroll: %s\n", iOk ? "PASS" : "FAIL");
+#endif
 
         // ---- the clock reads the time honestly ---------------------------------------
         //
@@ -1416,6 +1422,7 @@ int main(int argc, char **argv) {
         // Only when the apps were actually registered. The headless capture modes put a
         // single screen up directly and never build the shell, so there is nothing here for
         // a fetched headline to be drawn into, and no reason to spend the request.
+#if NEWS_ENABLED
         if (interactive || newsShot) {
             static Uint32 lastNet = 0;
             if (now - lastNet > 400) {
@@ -1423,6 +1430,7 @@ int main(int argc, char **argv) {
                 if (intelview::fetchStep()) intelview::onHeadlinesReady();
             }
         }
+#endif
         lv_tick_inc(now - last);
         last = now;
         if (interactive) {                       // drive the app shell through the SAME path as the device
@@ -1841,6 +1849,15 @@ int main(int argc, char **argv) {
 
         static int newsStep = 0;
         static Uint32 newsAt = 0;
+#if !NEWS_ENABLED
+        if (newsShot) {
+            // Said rather than photographing whatever screen is up, as --wxshot does.
+            printf("[sim] --newsshot: News is not in this build (NEWS_ENABLED in config.h). "
+                   "Nothing to capture.\n");
+            run = false;
+        }
+        (void)newsStep; (void)newsAt;
+#else
         if (newsShot) {
             if (newsStep == 0 && now - start > 2500) {
                 app_shell::selectApp(app_shell::APP_INTEL);
@@ -1865,6 +1882,7 @@ int main(int argc, char **argv) {
                 run = false;
             }
         }
+#endif
 
         // SIM_APP=<name or index>: start on a chosen app instead of whatever comes up first.
         // Added for the moving background (THEME_CAPS 55), which lives on the clock and so

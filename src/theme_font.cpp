@@ -5,6 +5,7 @@
 #include "custom_menu.h"
 #include "custom_settings.h"
 #include "custom_radar.h"
+#include "config.h"     // NEWS_ENABLED — an #if on an undefined name is silently 0
 #include <string.h>
 #include <stdio.h>      // snprintf — not pulled in by Arduino.h on the desktop build
 #include <new>          // std::nothrow — a failed handle alloc must not throw into LVGL
@@ -167,6 +168,10 @@ void begin() {
         // Cheap existence check before asking LVGL to parse: a theme that ships no font
         // for a slot is the normal case, not an error worth a log line each boot.
         if (!theme_art::find_blob(theme_select::activeSlug(), SLOT_FILE[i], data, len)) continue;
+#if !NEWS_ENABLED
+        // No News screen in this build (config.h): its faces would sit in PSRAM unread.
+        if (i >= S_INTEL_TITLE && i <= S_INTEL_BRIEF) continue;
+#endif
         // lv_font_load() parses the whole face into LVGL's heap. That heap is PSRAM now
         // (LV_MEM_CUSTOM in lv_conf.h); while it was the 64 KB internal pool, a 44 KB face
         // exhausted it, LVGL did not check the failed allocation, and load_glyph() wrote
