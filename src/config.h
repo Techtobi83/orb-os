@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.20.0"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.21.4"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -53,6 +53,14 @@
 // stays, dormant, so a theme's intel_style.json is still parsed (TC-008) and 1 brings the
 // app back exactly as it was.
 #define NEWS_ENABLED 0
+
+// ---------- Forecast ("Vorhersage") ----------
+// A second weather screen after the radar, asked for by the owner on 2026-09-30: the
+// forecast as a 24-hour dial (forecast_view.cpp), German text. Reads the Open-Meteo
+// snapshot already fetched every WEATHER_REFRESH_MS, so it adds no requests. Serves no CUT
+// item. Not themeable yet: it has no Orb Studio half.
+#define FORECAST_ENABLED 1
+#define FORECAST_NAME    "Vorhersage"   // the knob menu's label for it
 
 // ---------- Touch: swipe sideways to change app ----------
 // The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds

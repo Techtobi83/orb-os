@@ -20,7 +20,7 @@ bool weather_fetch(double lat, double lon, WeatherSnapshot &out) {
              // certificate was never verified anyway, and no credentials are sent.
              "http://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f"
              "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m"
-             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset"
              "&forecast_days=4&timezone=auto", lat, lon);
 
     WiFiClient client;
@@ -88,6 +88,14 @@ bool weather_fetch(double lat, double lon, WeatherSnapshot &out) {
     JsonArrayConst highs = daily["temperature_2m_max"].as<JsonArrayConst>();
     JsonArrayConst lows = daily["temperature_2m_min"].as<JsonArrayConst>();
     JsonArrayConst rain = daily["precipitation_probability_max"].as<JsonArrayConst>();
+    JsonArrayConst rises = daily["sunrise"].as<JsonArrayConst>();
+    JsonArrayConst sets = daily["sunset"].as<JsonArrayConst>();
+    // "2026-09-30T07:28" in the location's own time (timezone=auto) -> minutes after midnight.
+    auto minutes = [](const char *iso) -> int {
+        const char *t = iso ? strchr(iso, 'T') : nullptr;
+        int h, m;
+        return (t && sscanf(t + 1, "%d:%d", &h, &m) == 2) ? h * 60 + m : -1;
+    };
     const size_t count = dates.size() < 4 ? dates.size() : 4;
     for (size_t i = 0; i < count; ++i) {
         snprintf(next.days[i].date, sizeof(next.days[i].date), "%s", dates[i] | "");
@@ -95,6 +103,8 @@ bool weather_fetch(double lat, double lon, WeatherSnapshot &out) {
         next.days[i].tempMaxC = highs[i] | 0.0f;
         next.days[i].tempMinC = lows[i] | 0.0f;
         next.days[i].rainChance = rain[i] | 0;
+        next.days[i].sunriseMin = minutes(rises[i] | (const char *)nullptr);
+        next.days[i].sunsetMin = minutes(sets[i] | (const char *)nullptr);
     }
     next.dayCount = (int)count;
     next.valid = true;

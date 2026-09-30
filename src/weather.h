@@ -11,6 +11,8 @@ struct WeatherDay {
     float tempMinC;
     float tempMaxC;
     int rainChance;
+    int sunriseMin;   // local minutes after midnight, -1 = not known
+    int sunsetMin;
 };
 
 struct WeatherSnapshot {

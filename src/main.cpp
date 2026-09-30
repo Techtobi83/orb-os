@@ -48,6 +48,7 @@
 #include "app_shell.h"               // "channel changer": knob flips between apps
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
 #include "touch_swipe.h"             // sideways swipe on the glass (TOUCH_SWIPE_ENABLED)
+#include "forecast_view.h"           // "Vorhersage", the forecast dial (FORECAST_ENABLED)
 #include "diag_log.h"                // RTC-memory event ring buffer, survives a reboot
 #include "sdcard.h"                  // microSD (TF) slot, SPI mode
 #include "roads_sd.h"                // worldwide roads read off the SD card
@@ -1030,6 +1031,9 @@ static void persist_location_name(const char *name) {
     p.putString("homeName", name);
     p.end();
 }
+
+// The forecast screen's empty state tells "no WiFi" from "no answer yet".
+bool host_wifi_connected() { return WiFi.status() == WL_CONNECTED; }
 
 // For the flight tracker's location line (theme_style Radar::locText) and anything else
 // that wants to say where the scope is pointed. False when nothing has ever named it, so
@@ -2789,6 +2793,12 @@ void setup() {
 #if WEATHER_ENABLED
     app_shell::add(radarScreen, theme_style::names().weather,  weather_press_cycle, nullptr, false, radar_show_weather, radar_hide_weather, !theme_style::apps().weather);
 #endif
+#if FORECAST_ENABLED
+    forecastview::init();
+    psram_mark("after forecastview");
+    app_shell::add(forecastview::screen(), FORECAST_NAME, nullptr, nullptr, false,
+                   forecastview::onEnter, forecastview::onExit, false);   // reads the stored forecast; no press, no turn
+#endif
 #if !APPS_LAUNCH_ONE
     spycamview::init();
     psram_mark("after spycamview");
@@ -3492,6 +3502,9 @@ void loop() {
     if (g_weatherDirty) {
         g_weatherDirty = false;
         ui_on_data_updated();
+#if FORECAST_ENABLED
+        forecastview::onWeather();
+#endif
     }
     // Headlines arrived on core 0; the labels are LVGL objects and may only be written
     // here. Cheap enough to do whether or not the screen is showing: it is five short

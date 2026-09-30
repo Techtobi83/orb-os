@@ -31,3 +31,12 @@ renaming, and says nothing about what a derived work may be called; what it
 requires is that the copyright notice travels with the software, which it
 does. The lineage is recorded here precisely BECAUSE the name no longer
 carries it.
+
+Third-party font: Sora
+----------------------
+
+The forecast screen's typeface is Sora, Copyright 2019 The Sora Project Authors
+(https://github.com/sora-xor/sora-font), licensed under the SIL Open Font
+License 1.1. The source font and its licence are in assets/fonts/
+(Sora-Variable.ttf, Sora-OFL.txt); the src/font_sora_*.c files are bitmaps
+rendered from it by tools/gen_lv_font.py.

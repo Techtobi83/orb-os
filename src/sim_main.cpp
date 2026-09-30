@@ -29,6 +29,7 @@
 #include "aircraft.h"
 #include "clock_view.h"
 #include "intel_view.h"
+#include "forecast_view.h"
 #include "ticker_view.h"
 #include "ticker.h"
 #include "app_shell.h"
@@ -83,6 +84,7 @@ namespace {
 // (THEME_CAPS 54). SIM_CITY overrides it, and SIM_CITY="" is how you check what a design
 // does on an Orb that has never been told what its coordinates are called: the banner
 // draws nothing at all rather than an empty plate.
+bool host_wifi_connected() { return true; }   // the desktop is always online
 bool host_location_name(char *out, size_t n) {
     if (!n) return false;
     const char *env = getenv("SIM_CITY");
@@ -656,6 +658,11 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
                    []() { static bool fc = false; fc = !fc; ui_set_weather_forecast(fc); },  // push toggles WX/forecast
                    nullptr, false, []() { wx_map_prepare(g_set.homeLat, g_set.homeLon, 0); ui_weather_art_attach(); ui_show_view(1); }, nullptr, !theme_style::apps().weather);
 #endif
+#if FORECAST_ENABLED
+    forecastview::init();   // onEnter redraws from whatever forecast is stored by then
+    app_shell::add(forecastview::screen(), FORECAST_NAME, nullptr, nullptr, false,
+                   forecastview::onEnter, forecastview::onExit, false);
+#endif
 #if !APPS_LAUNCH_ONE
     app_shell::add(survScreen,  theme_style::names().surveillance, nullptr, nullptr, false, nullptr, nullptr, !theme_style::apps().surveillance);
 #else
@@ -919,6 +926,7 @@ int main(int argc, char **argv) {
         snprintf(forecast.days[i].date, sizeof(forecast.days[i].date), "%s", dates[i]);
         forecast.days[i].code = codes[i]; forecast.days[i].tempMinC = lows[i];
         forecast.days[i].tempMaxC = highs[i]; forecast.days[i].rainChance = rain[i];
+        forecast.days[i].sunriseMin = 5 * 60 + 20; forecast.days[i].sunsetMin = 21 * 60 + 40;   // June
     }
     weather_store(forecast);   // still-mock forecast panel (multi-day temps) — not the radar image itself
     wx_radar_begin();

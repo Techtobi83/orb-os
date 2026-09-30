@@ -53,6 +53,9 @@ namespace app_shell {
 #if WEATHER_ENABLED
         APP_WEATHER,
 #endif
+#if FORECAST_ENABLED
+        APP_FORECAST,    // "Vorhersage" (config.h)
+#endif
 #if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif
