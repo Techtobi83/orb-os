@@ -240,9 +240,11 @@ void input_router::dispatch(int delta, bool pressed) {
     if (pressed && !app_shell::pressCurrent() && app_shell::count() > 0) knob_help::show();
 }
 
-// A swipe means one thing everywhere: the next or previous app. Like the rock, it works on
-// captured screens too (Settings included), for the same reason: one gesture, one meaning,
-// every screen, and nothing on those screens is touch-driven for it to collide with.
+// A swipe means one thing: the next or previous app, among the apps a person browses.
+// Settings is not one of them. The owner wants it reached from the knob menu only, so a
+// swipe never lands on it (app_shell::stepBrowsable) and does nothing while it is open,
+// where a sideways brush would otherwise throw somebody out of a half-made change.
+// Other captured screens take it, as they take the rock.
 //
 // Only the notices that are waiting for an answer take it instead, and they SWALLOW it the
 // way they swallow a knob turn: the swipe that means "yes, I see it" must not also change
@@ -260,6 +262,6 @@ void input_router::swipe(int dir) {
     // The switcher is the knob's: it is up for two seconds and then closes on its own, and a
     // swipe landing in it would move the selection by an amount nobody could predict.
     if (app_shell::browsing()) return;
-    if (dir > 0) app_shell::next();
-    else         app_shell::prev();
+    if (app_shell::onSettings()) return;
+    app_shell::stepBrowsable(dir);
 }

@@ -470,6 +470,17 @@ void app_shell::prev() {
     if (s_count) load(next_visible(s_cur, -1), true, false);
 }
 
+void app_shell::stepBrowsable(int dir) {
+    if (!s_count || dir == 0) return;
+    dir = dir > 0 ? +1 : -1;
+    int idx = next_visible(s_cur, dir);
+    if (idx == APP_SETTINGS) idx = next_visible(idx, dir);
+    if (idx == APP_SETTINGS || idx == s_cur) return;   // nothing else to go to
+    load(idx, true, dir > 0);
+}
+
+bool app_shell::onSettings() { return s_count && s_cur == APP_SETTINGS; }
+
 void app_shell::selectApp(int idx) {
     if (idx >= 0 && idx < s_count) load(idx, false, true);
 }

@@ -92,6 +92,11 @@ namespace app_shell {
 
     void next();          // advance to the next app (knob right), slides left
     void prev();          // go to the previous app (knob left), slides right
+    // Like next()/prev(), but only among the apps a person browses: Settings is skipped, as
+    // are hidden apps. Settings is reached from the knob's menu only; the swipe and the
+    // automatic advance both step with this, so neither can land there.
+    void stepBrowsable(int dir);
+    bool onSettings();    // is the current app Settings (APP_SETTINGS)?
     // Knob pushed: run the current app's press handler. Returns whether there WAS one,
     // so the caller can tell a press that did something from a press that vanished. The
     // clock registers none, which is the dead end knob_help exists to answer.
