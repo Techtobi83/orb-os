@@ -242,12 +242,10 @@ static void rounder_cb(lv_disp_drv_t *drv, lv_area_t *area) {
     area->y2 |= 1;
 }
 
-// Touch is deliberately not wired up. The Orb is knob-only: see the input model in
-// docs/ARCHITECTURE.md and section 2 of orb-user-requirements.md. The CST9217 driver
-// (src/touch_cst9217.cpp) is kept in the repo but excluded from both build envs via
-// build_src_filter in platformio.ini, so it costs zero bytes while staying available
-// if a touch feature is ever wanted. The pointer indev registration and the
-// physical-to-logical rotation mapping that used to live here were removed with it.
+// Touch is not an LVGL input device. The Orb is knob-first: see the input model in
+// docs/ARCHITECTURE.md. Since 2.18.0 the CST9217 is read for exactly one gesture, a
+// sideways swipe that changes app (touch_swipe.cpp, routed by input_router::swipe), and
+// nothing registers a pointer indev here, so no widget responds to a tap.
 
 
 // Same running ledger as main.cpp's boot checkpoints, scoped inside this function.

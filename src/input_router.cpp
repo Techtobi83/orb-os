@@ -239,3 +239,27 @@ void input_router::dispatch(int delta, bool pressed) {
     // nothing at all about the clock.
     if (pressed && !app_shell::pressCurrent() && app_shell::count() > 0) knob_help::show();
 }
+
+// A swipe means one thing everywhere: the next or previous app. Like the rock, it works on
+// captured screens too (Settings included), for the same reason: one gesture, one meaning,
+// every screen, and nothing on those screens is touch-driven for it to collide with.
+//
+// Only the notices that are waiting for an answer take it instead, and they SWALLOW it the
+// way they swallow a knob turn: the swipe that means "yes, I see it" must not also change
+// the app underneath.
+void input_router::swipe(int dir) {
+    if (dir == 0 || app_shell::count() == 0) return;   // before the roster: early, not lost
+    if (update_ui::awaitingAck()) { update_ui::ackReady(); return; }
+    if (knob_help::showing())     { knob_help::dismiss(); return; }
+#if defined(ESP_PLATFORM)
+    display::markInput(lv_tick_get());
+#endif
+    // Winding is five turns of the knob, and that price is the point of the screen; a swipe
+    // past it would be a way to skip it. The rock still leaves it, as before.
+    if (wind_notice::showing()) return;
+    // The switcher is the knob's: it is up for two seconds and then closes on its own, and a
+    // swipe landing in it would move the selection by an amount nobody could predict.
+    if (app_shell::browsing()) return;
+    if (dir > 0) app_shell::next();
+    else         app_shell::prev();
+}

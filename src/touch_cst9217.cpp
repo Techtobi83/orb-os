@@ -23,7 +23,8 @@ static bool cst_read_reg(uint16_t reg, uint8_t *data, uint8_t len) {
 }
 
 bool touch_begin() {
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, 400000);
+    // No Wire.begin() here: imu_begin() is the one place the shared bus is brought up (see
+    // the note there), so this must be called after it.
 
     // hardware reset (low 10 ms, high 50 ms)
     pinMode(PIN_TP_RST, OUTPUT);

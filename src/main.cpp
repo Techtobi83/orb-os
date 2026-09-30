@@ -47,6 +47,7 @@
 #include "knob.h"                    // rotary encoder on the 8-pin header
 #include "app_shell.h"               // "channel changer": knob flips between apps
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
+#include "touch_swipe.h"             // sideways swipe on the glass (TOUCH_SWIPE_ENABLED)
 #include "diag_log.h"                // RTC-memory event ring buffer, survives a reboot
 #include "sdcard.h"                  // microSD (TF) slot, SPI mode
 #include "roads_sd.h"                // worldwide roads read off the SD card
@@ -2875,6 +2876,9 @@ void setup() {
     }
 
     imu_begin();       // face-down sleep (no-op if the IMU isn't detected)
+#if TOUCH_SWIPE_ENABLED
+    touch_swipe::begin();   // after imu_begin(): that is what brings the shared I2C bus up
+#endif
     battery_begin();   // AXP2101 (no-op if not detected / no battery)
     battery_enable_codec_rail();   // power the ES8311 analog rail before audio init
 
@@ -3300,6 +3304,19 @@ void loop() {
         input_router::dispatch((int)kd, pressed);           // same 3-mode routing the sim uses
     }
     input_router::tick();                                    // a settling rock, resolved without new input
+#if TOUCH_SWIPE_ENABLED
+    {   // Face down, the glass is against the table: nothing it reports is a person.
+        const touch_swipe::Result t = touch_swipe::poll(millis());
+        if (t != touch_swipe::NONE && !g_asleep) {
+            display::noteActivity();                   // like the knob: touch keeps it awake
+            if (g_idle) { g_idle = false; applyBrightness(); }
+            if (t == touch_swipe::NEXT || t == touch_swipe::PREV) {
+                diag::log("swipe %s (app %s)", t == touch_swipe::NEXT ? "next" : "prev", app_shell::name());
+                input_router::swipe(t == touch_swipe::NEXT ? +1 : -1);
+            }
+        }
+    }
+#endif
 
     display::loop();                // drive LVGL (render dirty areas + run timers)
 

@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.17.1"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.18.0"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -45,6 +45,23 @@
 // Everything that decides whether the weather app is in the build asks WEATHER_ENABLED,
 // never APPS_LAUNCH_ONE directly, so the two switches cannot disagree at one call site.
 #define WEATHER_ENABLED (1 || !APPS_LAUNCH_ONE)
+
+// ---------- Touch: swipe sideways to change app ----------
+// The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds
+// ONE touch gesture on top, asked for by the owner on 2026-09-30: a sideways swipe moves to
+// the next or previous app, the way the knob menu would. Taps do nothing. Any touch wakes a
+// dimmed screen. Setting this to 0 takes the touch chip out of the build again.
+//
+// What a swipe does lives in input_router::swipe(), beside the knob, so both inputs obey the
+// same modal rules. Device only: the simulator has no touch chip.
+#ifdef ARDUINO
+#define TOUCH_SWIPE_ENABLED 1
+#else
+#define TOUCH_SWIPE_ENABLED 0
+#endif
+#define TOUCH_POLL_MS       15     // how often the CST9217 is read while the loop runs
+#define TOUCH_SWIPE_MIN_PX  90     // sideways travel a swipe needs, of the 466 px glass
+#define TOUCH_SWIPE_MAX_MS  700    // slower than this is a drag, not a swipe
 
 // ---------- Livestream (network camera app) ----------
 // Shows one camera's MJPEG stream (or snapshot URL) full screen. The URL is set on the

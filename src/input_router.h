@@ -14,4 +14,7 @@ namespace input_router {
     void dispatch(int delta, bool pressed);
     // Every loop pass. Finishes a rock that is still settling when no new input arrives.
     void tick();
+    // A sideways swipe on the glass: +1 = next app, -1 = previous. Here rather than at the
+    // touch driver so it passes the same modal checks a knob turn does.
+    void swipe(int dir);
 }
