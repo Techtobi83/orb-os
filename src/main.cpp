@@ -112,6 +112,8 @@ static bool                  g_soundChime = false;                   // on-devic
 static int                   g_alertMode = 2;                        // 0=off 1=emergencies 2=new+emergencies (web/NVS)
 static float                 g_proximityKm = 0.0f;                   // proximity alert radius, km (0=off) (web/NVS)
 static uint32_t              g_idleDimMs = IDLE_DIM_MS;              // dim after this idle time (0 = never)
+static uint16_t              g_autoPageMin = 0;                      // Settings > Display > Auto page (0 = off)
+static uint32_t              g_lastHandMs  = 0;                      // last knob or touch input, for Auto page
 static bool                  g_showSweep = true;                     // rotating sweep line on/off (web/NVS)
 static int                   g_units = 0;                            // 0=Aviation 1=Metric 2=Imperial (web/NVS)
 static int                   g_wxUnits = 0;                          // Weather app only: 0=Auto 1=Metric 2=Imperial (Settings/NVS)
@@ -679,6 +681,7 @@ static void loadSettings() {
     if (g_maxAc > ADSB_MAX_AIRCRAFT) g_maxAc = ADSB_MAX_AIRCRAFT;
     if (g_maxAc < 1)                 g_maxAc = 1;
     g_idleDimMs        = p.getUInt("idledim", IDLE_DIM_MS);
+    g_autoPageMin      = p.getUShort("autopage", 0);   // off unless somebody turned it on
     g_units            = p.getInt("units", 0);
     g_wxUnits          = p.getInt("wxUnits", 0);
     g_wxZoomTier       = 0;   // lean redesign: weather map is a single fixed 50mi range now
@@ -1197,6 +1200,17 @@ void host_set_idle_ms(uint32_t ms) {
     Preferences p;
     p.begin("capsuleradar", false);
     p.putUInt("idledim", g_idleDimMs);
+    p.end();
+}
+
+// Auto page (Settings > Display): minutes left alone before the Orb moves on to the next
+// app. 0 = off. The interval is timed in loop(); see "Auto page" there.
+int  host_get_auto_page_min() { return g_autoPageMin; }
+void host_set_auto_page_min(int minutes) {
+    g_autoPageMin = (uint16_t)(minutes < 0 ? 0 : minutes);
+    Preferences p;
+    p.begin("capsuleradar", false);
+    p.putUShort("autopage", g_autoPageMin);
     p.end();
 }
 
@@ -3298,6 +3312,7 @@ void loop() {
         int32_t kd = knob::takeDelta();
         bool pressed = knob::takePress();
         if (kd != 0 || pressed) {
+            g_lastHandMs = millis();
             display::noteActivity();    // knob use keeps the screen awake
             // And brings it back NOW. The idle check below runs on the IMU's 400 ms tick,
             // and the first stranger to build one reported that a twist or a press did not
@@ -3315,6 +3330,7 @@ void loop() {
     {   // Face down, the glass is against the table: nothing it reports is a person.
         const touch_swipe::Result t = touch_swipe::poll(millis());
         if (t != touch_swipe::NONE && !g_asleep) {
+            g_lastHandMs = millis();
             display::noteActivity();                   // like the knob: touch keeps it awake
             if (g_idle) { g_idle = false; applyBrightness(); }
             if (t == touch_swipe::NEXT || t == touch_swipe::PREV) {
@@ -3324,6 +3340,31 @@ void loop() {
         }
     }
 #endif
+    {   // Auto page. The interval runs from whichever came later: arriving on this app, or
+        // the last knob or touch input. So a person using a screen is never moved off it,
+        // and a screen nobody is watching moves on once per interval.
+        //
+        // Deliberately NOT display::inactiveMs(): the IMU counts a knock on the desk as
+        // activity, which is right for keeping the screen lit and wrong here, where a desk
+        // in use would hold the Orb on one app for ever.
+        //
+        // Not while face down (the screen is off; moving would only spend memory on apps
+        // nobody sees) or mid-install. A move that input_router refuses because something is
+        // in use restarts the interval rather than retrying every pass.
+        static int      pageIdx   = -1;
+        static uint32_t pageSince = 0;
+        const uint32_t nowMs = millis();
+        if (app_shell::index() != pageIdx) { pageIdx = app_shell::index(); pageSince = nowMs; }
+        if (g_autoPageMin && !g_asleep && !orb_link::transferActive()) {
+            const uint32_t quiet = min(nowMs - pageSince, nowMs - g_lastHandMs);
+            if (quiet >= (uint32_t)g_autoPageMin * 60000UL) {
+                if (input_router::autoAdvance())
+                    diag::log("auto page -> %s after %u min", app_shell::name(), (unsigned)g_autoPageMin);
+                pageIdx = app_shell::index();
+                pageSince = nowMs;
+            }
+        }
+    }
 
     display::loop();                // drive LVGL (render dirty areas + run timers)
 

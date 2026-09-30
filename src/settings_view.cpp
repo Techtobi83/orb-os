@@ -24,6 +24,8 @@ extern int  host_get_brightness();
 extern void host_set_brightness(int v, bool save);
 extern uint32_t host_get_idle_ms();
 extern void     host_set_idle_ms(uint32_t ms);
+extern int      host_get_auto_page_min();          // 0 = off
+extern void     host_set_auto_page_min(int minutes);
 extern void host_set_location(double lat, double lon);              // saves + reboots
 extern void host_set_location_named(const char *name, double lat, double lon);  // + records in recents
 extern bool host_locate_current();                                 // IP-locate + set + reboot; false = failed, didn't reboot
@@ -109,10 +111,17 @@ namespace {
     // person whose themes come from Studio (Zion, 2026-09-14). The palettes themselves
     // stay compiled in as the fallback; only the control is gone. The main menu's Theme
     // entry, which switches between installed designs, is the real one.
-    enum { DSP_SCREEN = 0, DSP_BRIGHT, DSP_BACK, DSP_COUNT };
+    enum { DSP_SCREEN = 0, DSP_AUTO, DSP_BRIGHT, DSP_BACK, DSP_COUNT };
     const uint32_t IDLE_MS[] = { 0, 28800000UL, 14400000UL, 7200000UL, 3600000UL, 1800000UL, 600000UL, 120000UL };
     const char *IDLE_LABELS[] = { "Always on", "8 hours", "4 hours", "2 hours", "1 hour", "30 min", "10 min", "2 min" };
     const int IDLE_N = (int)(sizeof(IDLE_MS) / sizeof(IDLE_MS[0]));
+    // Auto page: minutes left alone before the Orb moves to the next app (0 = off). The
+    // values are the owner's; the labels are a table beside them, so the two cannot drift.
+    const uint16_t AUTO_MIN[] = { 0, 5, 10, 15, 20, 30, 60 };
+    const char *AUTO_LABELS[] = { "Off", "5 min", "10 min", "15 min", "20 min", "30 min", "60 min" };
+    const int AUTO_N = (int)(sizeof(AUTO_MIN) / sizeof(AUTO_MIN[0]));
+    static_assert(sizeof(AUTO_LABELS) / sizeof(AUTO_LABELS[0]) == sizeof(AUTO_MIN) / sizeof(AUTO_MIN[0]),
+                  "every Auto page value needs a label");
 
     constexpr int WIFI_MAX = 12;   // most-scanned networks shown, strongest signal wins on duplicates
 
@@ -682,10 +691,18 @@ namespace {
         return 4;   // 1 hour
     }
 
+    int auto_index() {   // which AUTO_MIN entry is set; an unknown stored value reads as Off
+        const int cur = host_get_auto_page_min();
+        for (int i = 0; i < AUTO_N; ++i) if (AUTO_MIN[i] == cur) return i;
+        return 0;
+    }
+
     void refresh_display() {
         char b[28];
         snprintf(b, sizeof(b), "Screen   %s", IDLE_LABELS[idle_index()]);
         lv_label_set_text(s_dspItems[DSP_SCREEN], b);
+        snprintf(b, sizeof(b), "Auto page   %s", AUTO_LABELS[auto_index()]);
+        lv_label_set_text(s_dspItems[DSP_AUTO], b);
         lv_label_set_text(s_dspItems[DSP_BRIGHT], "Brightness");
         lv_label_set_text(s_dspItems[DSP_BACK], "Back");
         wheel_layout(s_dspItems, DSP_COUNT, s_dspSel, s_dspHl);
@@ -1487,6 +1504,9 @@ void settingsview::onPress() {
     } else if (s_mode == MODE_DISPLAY) {
         if (s_dspSel == DSP_SCREEN) {                   // cycle the screen-dim timeout
             host_set_idle_ms(IDLE_MS[(idle_index() + 1) % IDLE_N]);
+            refresh_display();
+        } else if (s_dspSel == DSP_AUTO) {              // cycle the auto-page interval
+            host_set_auto_page_min(AUTO_MIN[(auto_index() + 1) % AUTO_N]);
             refresh_display();
         } else if (s_dspSel == DSP_BRIGHT) {
             s_bri = host_get_brightness();

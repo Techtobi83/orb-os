@@ -265,3 +265,16 @@ void input_router::swipe(int dir) {
     if (app_shell::onSettings()) return;
     app_shell::stepBrowsable(dir);
 }
+
+// Nobody asked for this move, so it defers to anything that looks like somebody using the
+// Orb: a notice waiting for an answer, the wind screen, the open switcher, and any app that
+// holds the knob (Settings always does; the Flight Tracker does while an aircraft is
+// selected). It steps with stepBrowsable(), so it never lands on Settings either.
+bool input_router::autoAdvance() {
+    if (app_shell::count() == 0) return false;
+    if (update_ui::awaitingAck() || knob_help::showing() || wind_notice::showing()) return false;
+    if (app_shell::browsing() || app_shell::captured() || app_shell::onSettings()) return false;
+    const int before = app_shell::index();
+    app_shell::stepBrowsable(+1);
+    return app_shell::index() != before;
+}

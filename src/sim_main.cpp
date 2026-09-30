@@ -67,6 +67,9 @@ void host_set_brightness(int, bool) {}
 void host_update_bright(bool) {}       // the device forces full brightness under an update notice
 uint32_t host_get_idle_ms() { return 0; }
 void host_set_idle_ms(uint32_t) {}
+static int s_simAutoPage = 0;
+int  host_get_auto_page_min() { return s_simAutoPage; }
+void host_set_auto_page_min(int m) { s_simAutoPage = m; }
 void host_set_location(double lat, double lon) { sim_apply_home_location("", lat, lon); }
 
 namespace {
