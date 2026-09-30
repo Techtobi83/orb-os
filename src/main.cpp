@@ -1034,9 +1034,14 @@ static void persist_location_name(const char *name) {
 // For the flight tracker's location line (theme_style Radar::locText) and anything else
 // that wants to say where the scope is pointed. False when nothing has ever named it, so
 // the caller can draw nothing rather than an empty plate.
+//
+// The town only: everything from the first comma on is cut, so the lookup's "Altena, North
+// Rhine-Westphalia" reads "Altena" on every screen (the owner's call, 2026-09-30). Cut here,
+// on the way out, so no screen can forget to; NVS keeps the whole name.
 bool host_location_name(char *out, size_t n) {
     if (!n) return false;
     snprintf(out, n, "%s", g_locName.c_str());
+    if (char *comma = strchr(out, ',')) *comma = 0;
     return out[0] != 0;
 }
 

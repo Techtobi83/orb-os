@@ -87,6 +87,7 @@ bool host_location_name(char *out, size_t n) {
     if (!n) return false;
     const char *env = getenv("SIM_CITY");
     snprintf(out, n, "%s", env ? env : "Phoenix, Arizona");
+    if (char *comma = strchr(out, ',')) *comma = 0;   // the town only, as main.cpp's does
     return out[0] != 0;
 }
 
