@@ -188,6 +188,16 @@ static String                g_tz = TZ_STR;                          // POSIX ti
 // the honest state for a device handed bare coordinates. THEME_CAPS 54.
 static String                g_locName;
 static volatile bool         g_weatherDirty = false;
+// The network task's reconnect loop stands down until this millis() while Settings > WiFi
+// scans; see host_wifi_scan_start(). Written by the UI task, read by the network task.
+static volatile uint32_t     g_wifiScanHoldUntil = 0;
+static volatile bool         g_wifiScanPausedAuto = false;   // auto-reconnect is off for a scan; put it back
+// Why the station last dropped, as the driver said it (wifi_err_reason_t; 0 = none yet).
+// Settings uses it to say WHICH thing failed rather than blaming the password for all of them.
+static volatile uint8_t      g_wifiLastReason = 0;
+// The station associated with the access point since the last join began (password taken),
+// whether or not an address followed. Tells "no IP from DHCP" apart from "never got in".
+static volatile bool         g_wifiAssociated = false;
 static volatile bool         g_wxRadarDirty = false;
 static volatile bool         g_wxAnimDirty = false;      // new Weather app: frame set ready
 static volatile bool         g_cloudImageDirty = false;
@@ -290,7 +300,13 @@ static void adsb_task(void*) {
             Serial.println("[wifi] connection LOST");
             diag::log("wifi lost");
         }
-        if (!conn) {
+        // The scan's hold is over: the SDK's own auto-reconnect goes back on, then the slow
+        // retry below carries on as before.
+        if (g_wifiScanPausedAuto && (int32_t)(millis() - g_wifiScanHoldUntil) >= 0) {
+            g_wifiScanPausedAuto = false;
+            WiFi.setAutoReconnect(true);
+        }
+        if (!conn && (int32_t)(millis() - g_wifiScanHoldUntil) >= 0) {   // not while a scan runs
             static uint32_t s_wifiRetryAt = 0;
             if (millis() - s_wifiRetryAt > 20000UL) {
                 s_wifiRetryAt = millis();
@@ -1511,14 +1527,54 @@ void host_set_location_named(const char *name, double lat, double lon) {
 // timer. Connecting hands off cleanly from WiFiManager's non-blocking portal, then
 // mirrors WiFiManager's own approach on success: reboot for a clean start, since this
 // chip's WiFi/web/mDNS stack doesn't reliably hot-swap networks in place.
-void host_wifi_scan_start() { WiFi.scanNetworks(true /*async*/); }
+//
+// A station that is still trying to join a network the Orb cannot reach is "connecting" for
+// as long as it keeps trying, and the driver refuses to scan while it is: scanNetworks()
+// fails at once ("wifi:sta is connecting, return error"), the list comes back empty, and
+// Settings > WiFi offers nothing but Rescan. The reconnect loop in the network task and the
+// SDK's own auto-reconnect keep it trying for ever, so with the saved network gone (a guest
+// WiFi out of range, a router replaced) there was no way to choose another one. Reported by
+// the owner, seen in the log on 2026-10-01.
+//
+// Dropping the attempt is not enough on its own. The attempt that is cut off ends with
+// "no AP found", which the core treats as reconnectable (STA.cpp), so with auto-reconnect on
+// it starts the next attempt at once and the scan is refused again; the first version of
+// this fix did exactly that on the Orb. So, when not connected: auto-reconnect goes OFF for
+// the scan, the attempt is dropped (credentials untouched: eraseap false), the network
+// task's own retry stands down, and a refused scan is started again from
+// host_wifi_scan_result() for a few seconds, without blocking, because the radio can take
+// over a second to let go of the attempt it was in (measured: the first scan after boot was
+// still refused 600 ms after the disconnect, the next one a few seconds later was not). The
+// network task turns auto-reconnect back on when the hold ends. Here, in the functions every
+// scan goes through, rather than at the Settings call site.
+static uint32_t s_scanRetryUntil = 0;
+void host_wifi_scan_start() {
+    if (WiFi.status() != WL_CONNECTED) {
+        g_wifiScanHoldUntil = millis() + 20000UL;   // past the scan, and past a person reading it
+        g_wifiScanPausedAuto = true;
+        WiFi.setAutoReconnect(false);
+        WiFi.disconnect(false /*wifioff*/, false /*eraseap*/);
+    }
+    s_scanRetryUntil = millis() + 6000UL;
+    WiFi.scanNetworks(true /*async*/);   // refused or not, the result poll takes it from here
+}
 
 // Returns: -1 = scan still running, -2 = scan failed, >=0 = number of networks written.
 // Deduplicates repeated SSIDs (multiple access points/bands) to the strongest signal.
 int host_wifi_scan_result(char names[][33], int8_t *rssi, bool *isOpen, int maxN) {
     const int16_t n = WiFi.scanComplete();
     if (n == WIFI_SCAN_RUNNING) return -1;
-    if (n == WIFI_SCAN_FAILED || n < 0) return -2;
+    if (n == WIFI_SCAN_FAILED || n < 0) {
+        // Refused while the radio was still letting go of a connect attempt: ask again until
+        // the deadline, and report "still running" meanwhile, so Settings keeps its
+        // "Scanning..." rather than an empty list.
+        if ((int32_t)(millis() - s_scanRetryUntil) < 0) {
+            WiFi.scanNetworks(true /*async*/);
+            return -1;
+        }
+        Serial.println("[wifi] scan refused by the driver");
+        return -2;
+    }
     int count = 0;
     for (int i = 0; i < n && count < maxN; ++i) {
         String ssid = WiFi.SSID(i);
@@ -1613,11 +1669,48 @@ void host_wifi_saved_ssid(char *out, size_t n) {
 void host_wifi_restore_saved() { wifi_restore_credentials(); }
 void host_wifi_forget_backup() { wifi_clear_backup(); }
 
+// The join, started and then STARTED AGAIN until the driver takes it.
+//
+// While the station is still trying to reach the old network (an unreachable saved network
+// keeps it trying for ever) the driver refuses a new connect exactly as it refuses a scan:
+// "wifi:sta is connecting, return error", WiFi.begin() fails, and the new network's password
+// is never even sent. The owner was told "check the password" for a password no router had
+// seen (log, 2026-10-01). So, as for the scan: auto-reconnect off, the old attempt dropped,
+// the network task kept out of the way, and the begin retried from
+// host_wifi_connect_status() until it is accepted, without blocking. Auto-reconnect comes
+// back on the moment the new attempt is under way, so a missed handshake inside it is retried
+// rather than final, and the drop reasons are cleared then so the old network's "no AP found"
+// is never reported as this one's.
+static char     s_joinSsid[33] = "", s_joinPass[65] = "";
+static bool     s_joinPending = false;
+static uint32_t s_joinRetryUntil = 0;
+static void join_try_begin() {
+    // Already in. A begin the driver "refused" has still set the new network's config, and the
+    // station can come up on it moments later; beginning again then drops that live link
+    // (reason 8, seen on the Orb on 2026-10-01). So a station already on this network counts
+    // as the join taken.
+    const bool inAlready = WiFi.status() == WL_CONNECTED && WiFi.SSID() == s_joinSsid;
+    if (!inAlready && WiFi.begin(s_joinSsid, s_joinPass) == WL_CONNECT_FAILED) return;   // refused: try again
+    s_joinPending = false;
+    g_wifiLastReason = 0;
+    g_wifiAssociated = false;
+    WiFi.setAutoReconnect(true);
+    Serial.printf("[wifi] joining '%s'\n", s_joinSsid);
+}
+
 void host_wifi_connect(const char *ssid, const char *pass) {
     if (g_wm.getConfigPortalActive()) g_wm.stopConfigPortal();   // hand off cleanly
     wifi_backup_credentials();   // the actual protection; see above
     WiFi.persistent(false);      // belt as well as braces, on the chance it does help
-    WiFi.begin(ssid, pass);
+    g_wifiScanPausedAuto = false;
+    g_wifiScanHoldUntil = millis() + 30000UL;     // longer than Settings' 20 s attempt
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false /*wifioff*/, false /*eraseap*/);
+    snprintf(s_joinSsid, sizeof(s_joinSsid), "%s", ssid);
+    snprintf(s_joinPass, sizeof(s_joinPass), "%s", pass);
+    s_joinPending = true;
+    s_joinRetryUntil = millis() + 8000UL;
+    join_try_begin();
 }
 
 // Now it is true, so now it is written. Called only once the association has actually
@@ -1638,8 +1731,44 @@ void host_wifi_commit_credentials(const char *ssid, const char *pass) {
                   ssid, WiFi.status() == WL_CONNECTED ? "up" : "still settling");
 }
 
+// What the last failure was, in words Settings can show. The driver's own reasons, grouped:
+// the network refused the password, the network could not be found, or something else.
+const char *host_wifi_failure_text() {
+    switch (g_wifiLastReason) {
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_802_1X_AUTH_FAILED:
+        case WIFI_REASON_MIC_FAILURE:
+            return "Check the password.";
+        case WIFI_REASON_NO_AP_FOUND:
+        case WIFI_REASON_BEACON_TIMEOUT:
+            return "Network not found.";
+        case WIFI_REASON_ASSOC_FAIL:
+        case WIFI_REASON_ASSOC_EXPIRE:
+        case WIFI_REASON_AUTH_EXPIRE:
+            return "The network did not answer.";
+        case 0:
+            // No drop at all. If it associated, the password was right and the address never
+            // came: the router's DHCP, not the Orb's credentials.
+            return g_wifiAssociated ? "Joined, but got no IP address." : "No answer in time.";
+        default: {
+            static char buf[40];
+            snprintf(buf, sizeof(buf), "Error %u.", (unsigned)g_wifiLastReason);
+            return buf;
+        }
+    }
+}
+
 // 0 = still connecting, 1 = connected, 2 = failed/rejected.
 int host_wifi_connect_status() {
+    if (s_joinPending) {                       // the driver has not taken the join yet
+        if ((int32_t)(millis() - s_joinRetryUntil) < 0) { join_try_begin(); return 0; }
+        s_joinPending = false;
+        WiFi.setAutoReconnect(true);
+        Serial.println("[wifi] the driver never took the join");
+        return 2;
+    }
     const wl_status_t st = WiFi.status();
     if (st == WL_CONNECTED) return 1;
     if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL) return 2;
@@ -2980,6 +3109,26 @@ void setup() {
     // failures, which is exactly the case that stranded the device — but it recovers the
     // common brief blip without waiting for the 20 s retry.
     WiFi.setAutoReconnect(true);
+    // Say why the station drops, every time. The core logs it only at a debug level this
+    // build silences, so a failed join used to leave nothing to go on but "check the password".
+    WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
+        const uint8_t r = info.wifi_sta_disconnected.reason;
+        g_wifiLastReason = r;
+        Serial.printf("[wifi] dropped: reason %u (%s)\n", (unsigned)r,
+                      WiFi.STA.disconnectReasonName((wifi_err_reason_t)r));
+    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+    // And the two steps between "trying" and "connected": associating with the access point
+    // (the password was accepted) and getting an address from it. A join that stops between
+    // them is a DHCP problem, not a password one, and it raises no disconnect at all.
+    WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
+        g_wifiAssociated = true;
+        Serial.printf("[wifi] associated with '%.*s' on channel %u; waiting for an address\n",
+                      (int)info.wifi_sta_connected.ssid_len, (const char *)info.wifi_sta_connected.ssid,
+                      (unsigned)info.wifi_sta_connected.channel);
+    }, ARDUINO_EVENT_WIFI_STA_CONNECTED);
+    WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info) {
+        Serial.printf("[wifi] got address %s\n", IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+    }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
     // WHAT IS STORED, read properly, before anything tries to use it. The driver has to be
     // up for esp_wifi_get_config() to answer (it loads the saved network from NVS as part
     // of coming up), and the return code has to be checked, because an unchecked call

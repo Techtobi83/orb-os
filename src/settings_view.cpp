@@ -56,6 +56,7 @@ extern void host_wifi_connect(const char *ssid, const char *pass);
 extern void host_wifi_commit_credentials(const char *ssid, const char *pass);  // only once associated
 extern void host_wifi_restore_saved();   // put the previous network back after a failed attempt
 extern int  host_wifi_connect_status();
+extern const char *host_wifi_failure_text();   // why the last join failed, in a few words
 extern void host_wifi_connected_reboot();
 extern void host_factory_reset();          // wipes WiFi + all saved settings, reboots
 extern bool host_wx_is_imperial();         // resolved (mode + Auto-detected location) weather units
@@ -1294,7 +1295,11 @@ namespace {
                     host_wifi_connected_reboot();
                 }
             } else {
-                lv_label_set_text_fmt(s_wifiStatusLbl, "Couldn't connect to\n%s.\nCheck the password.", s_wifiSelSsid);
+                // Which thing failed, from the driver's own reason: a password the network
+                // refused is one of several, and blaming it for all of them sent the owner
+                // round in circles with a password that was right.
+                lv_label_set_text_fmt(s_wifiStatusLbl, "Couldn't connect to\n%s.\n%s", s_wifiSelSsid,
+                                      host_wifi_failure_text());
                 lv_label_set_text(s_wifiStatusHint, "push to go back");
             }
         }

@@ -212,6 +212,7 @@ void host_wifi_restore_saved() {}
 void host_wifi_forget_backup() {}
 void host_wifi_saved_ssid(char *out, size_t n) { snprintf(out, n, "%s", ""); }
 int  host_wifi_connect_status() { return 0; }
+const char *host_wifi_failure_text() { return "No answer in time."; }
 void host_wifi_connected_reboot() {}
 void host_factory_reset() {}
 bool host_wx_is_imperial() { return false; }
