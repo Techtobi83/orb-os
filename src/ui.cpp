@@ -1150,7 +1150,7 @@ void ui_splash_show(void) {
     // clock on screen and then a black "connecting" notice over the top of it, and that
     // read as the update failing after it had apparently finished. Zion asked for: finish
     // everything, then the splash for three seconds, then the clock, and done.
-    lv_timer_t *t = lv_timer_create(splash_dismiss_cb, 3000, cont);
+    lv_timer_t *t = lv_timer_create(splash_dismiss_cb, SPLASH_HOLD_MS, cont);   // config.h
     lv_timer_set_repeat_count(t, 1);
 }
 

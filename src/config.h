@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.22.13"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.22.14"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -197,6 +197,11 @@ static const float RANGE_STEPS_KM[] = {10.0f, 20.0f, 30.0f, 50.0f, 100.0f};
 
 // ---------- Weather forecast (Open-Meteo, no API key) ----------
 #define WEATHER_REFRESH_MS  1800000UL      // 30 minutes; forecast data changes slowly
+// How long the start screen holds before it fades to the clock. Read by both the splash's
+// own timer (ui.cpp) and the end-of-setup loop that drives it (main.cpp), which used to
+// carry the same 3000 each: change one alone and the splash is cut short or the boot waits
+// on a timer that already fired. 5 s since 2026-10-01, at the owner's request.
+#define SPLASH_HOLD_MS      5000UL
 #define WX_RADAR_REFRESH_MS 300000UL       // RainViewer frames update about every 5 minutes
 // Weakest tile pixel that counts as precipitation. RainViewer's scheme 2 draws precipitation
 // fully opaque (blues) and the weak-echo band below it (ground clutter, virga, drizzle too

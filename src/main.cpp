@@ -3444,7 +3444,7 @@ void setup() {
     // is already built underneath it (app_shell::begin() above, app index 0), seeded from
     // the RTC, so what the fade reveals is a live, correct clock and the boot is over.
     {
-        const uint32_t pumpUntil = millis() + 3000 + 600 + 150;   // hold + fade + margin
+        const uint32_t pumpUntil = millis() + SPLASH_HOLD_MS + 600 + 150;   // hold + fade + margin
         while (millis() < pumpUntil) {
             lv_timer_handler();
             delay(5);
