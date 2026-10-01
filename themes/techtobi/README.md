@@ -14,7 +14,10 @@ is not possible, since Studio never had it.
 | Files | Source |
 |---|---|
 | `clock_plate.png`, `clock_hand_*.png`, `clock_shadow_*.png`, `clock_static1.png` | drawn by `tools/theme_techtobi.py` (the "Tagesring-Chronometer") |
-| radar, menu, settings and splash art, `chime.pcm`, `font_*.bin` | the Cold War 1983 theme, Zion Brock, CC0 1.0 |
+| `splash.png` | drawn by `tools/theme_techtobi.py`: the owner's IRON ORBIT logo (`assets/iron_orbit_logo.png`) rebuilt clean on the chronometer dial; its letters are cut from the artwork into `assets/iron_orbit_letters.png` |
+| `settings_plate.png`, `menu_plate.png` | drawn by `tools/theme_techtobi.py`: the dial without the clock's furniture |
+| `font_settings.bin`, `font_settings_sel.bin`, `font_menu_current.bin` | Sora (OFL, see NOTICE), written by `tools/gen_lv_font.py` in LVGL's binary format |
+| radar art, `chime.pcm`, `font_radar*.bin` | the Cold War 1983 theme, Zion Brock, CC0 1.0 |
 | `font_weather1.bin` | a copy of Cold War's `font_radar_loc.bin`, so the weather map's town matches the Flight Tracker's |
 | `radar_blip.png` | the Modern theme, Zion Brock, CC0 1.0, tinted green by `blipImageTint` |
 

@@ -6,7 +6,11 @@ firmware has. This writes the same format the repo's other fonts use (lv_font_fm
 4 bpp, uncompressed, no kerning), from Pillow's FreeType, so a face can be added with the
 PlatformIO Python alone. Variable fonts take a weight.
 
-    python tools/gen_lv_font.py <font.ttf> <size_px> <weight|-> <name> <chars> <out.c>
+    python tools/gen_lv_font.py <font.ttf> <size_px> <weight|-> <name> <chars> <out.c|out.bin>
+
+    out.bin  writes LVGL's binary font format instead, the one lv_font_load() reads at run
+             time: a theme font (font_settings.bin, font_menu_current.bin, ...) for the SD
+             card. Same glyphs, same packing; <name> is then unused.
 
     chars   the characters to include, literally (UTF-8). Keep it to what the screen
             draws: every glyph costs flash, and a glyph that is not here draws nothing.
@@ -55,6 +59,45 @@ def runs(codes):
     return out
 
 
+def write_bin(out, codes, glyphs, ascent, descent, size):
+    """LVGL 8's binary font (lv_font_loader.c): head, cmap, loca, glyf; no kerning.
+
+    Every glyph's header is byte-aligned on purpose (16-bit advance in 1/16 px, 8-bit
+    offsets and box), so its bitmap starts on a byte and the loader takes the fast path."""
+    import struct
+    head = struct.pack("<IHHHhHhHhhHHBBBBBBBBBBhH",
+                       1, 3, size, ascent, -descent, ascent, -descent, 0, -descent, ascent,
+                       0, 0,           # default advance (unused: every glyph has its own), kerning scale
+                       1, 0, 1, 4,     # u32 loca offsets, glyph ids (kerning only), advance in 1/16 px, 4 bpp
+                       8, 8, 16, 0,    # xy bits, wh bits, advance bits, no compression
+                       0, 0, -2, 1)
+    head = struct.pack("<I4s", 8 + len(head), b"head") + head
+
+    rs = runs(codes)
+    entries, gid = b"", 1
+    data_off = 8 + 4 + 16 * len(rs)
+    for a, b in rs:
+        entries += struct.pack("<IIHHHBB", data_off, a, b - a + 1, gid, 0, 2, 0)   # FORMAT0_TINY
+        gid += b - a + 1
+    cmap_body = struct.pack("<I", len(rs)) + entries
+    cmap = struct.pack("<I4s", 8 + len(cmap_body), b"cmap") + cmap_body
+
+    glyf_body, offsets = b"", []
+    for g in [None] + glyphs:                     # glyph id 0 is reserved and empty
+        offsets.append(8 + len(glyf_body))
+        if g is None:
+            glyf_body += struct.pack(">HbbBB", 0, 0, 0, 0, 0)
+            continue
+        glyf_body += struct.pack(">HbbBB", int(round(g["adv"] * 16)), g["ofs_x"], g["ofs_y"], g["w"], g["h"])
+        glyf_body += bytes(pack4(g["px"]))
+    glyf = struct.pack("<I4s", 8 + len(glyf_body), b"glyf") + glyf_body
+    loca_body = struct.pack("<I", len(offsets)) + b"".join(struct.pack("<I", o) for o in offsets)
+    loca = struct.pack("<I4s", 8 + len(loca_body), b"loca") + loca_body
+    with open(out, "wb") as f:
+        f.write(head + cmap + loca + glyf)
+    print(f"{out}: {len(codes)} glyphs, binary, line height {ascent + descent}")
+
+
 def main():
     if len(sys.argv) != 7:
         raise SystemExit(__doc__)
@@ -66,6 +109,12 @@ def main():
     codes = sorted({ord(c) for c in chars} | {0x20})
     glyphs = [glyph(font, chr(c)) for c in codes]
     ascent, descent = font.getmetrics()
+    if out.lower().endswith(".bin"):
+        for g in glyphs:
+            if not (-128 <= g["ofs_x"] <= 127 and -128 <= g["ofs_y"] <= 127 and g["w"] <= 255 and g["h"] <= 255):
+                raise SystemExit(f"a glyph does not fit 8-bit metrics at {size}px")
+        write_bin(out, codes, glyphs, ascent, descent, size)
+        return
 
     bitmap, dsc, idx = [], [], 0
     for g in glyphs:

@@ -36,3 +36,6 @@ tools/hands/
 # Watch-script runtime state
 orb_watch.log
 orb_watch.pid
+
+# Theme fonts are part of a theme folder, unlike build output: keep them.
+!themes/**/*.bin
