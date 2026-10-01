@@ -1585,4 +1585,12 @@ void ui_weather_art_release(void) {
         lv_obj_add_flag(s_wxPlate, LV_OBJ_FLAG_HIDDEN);
     }
     plate_sprite::release(s_wxPlateArt);
+    // The map canvas points INTO the radar's frame buffer, and leaving the app gives those
+    // buffers back (wx_radar_release, on the network task, at its next quiet moment). Left
+    // visible, the canvas went on pointing at memory that by the next visit belonged to
+    // something else, and coming back showed it: noisy blocks and stray lines, until the
+    // first new frame re-aimed it, or for a minute if that fetch failed. Seen by the owner,
+    // "sporadically", on 2026-10-01. Hidden here, on the way out; build_weather() shows it
+    // again only once a frame of the new visit is there to point at.
+    if (s_wxCanvas) lv_obj_add_flag(s_wxCanvas, LV_OBJ_FLAG_HIDDEN);
 }

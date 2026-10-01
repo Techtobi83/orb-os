@@ -898,13 +898,18 @@ static void radar_show_home()    { ui_show_view(0); }
 // and does the work, because it is the one that writes into them. See g_wxOpened above.
 static void radar_show_weather() {
     g_wxClosed = false;
-    g_wxOpened = true;
     // The map under the weather is built HERE, on the UI thread, because it reads road tiles
     // off the SD card and the driver cannot take that from two tasks at once. The network
     // task only ever blits the finished masks. Returns immediately if this centre is built.
     wx_phase_set(WX_PHASE_MAP);
     ui_weather_art_attach();
     wx_map_prepare(g_settings.homeLat, g_settings.homeLon, g_wxZoomTier);
+    // Only NOW ask the network task for frames. Asking first (as this did) let the first frame
+    // be composed during the ~2 s map build, from a road mask that was half drawn and, before
+    // the masks were zeroed, half uninitialised: noisy blocks and stray lines baked into the
+    // frame, and with one frame every five minutes they stayed up for five minutes. Seen on
+    // the Orb on 2026-10-01: "gen 1 frame 1/1" logged before "map built".
+    g_wxOpened = true;
     ui_show_view(1);   // tile 1 since list/stats went
 }
 

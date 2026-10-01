@@ -25,6 +25,7 @@ static uint32_t millis() {
     return (uint32_t)duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 static void *heap_caps_malloc(size_t sz, int) { return malloc(sz); }
+static void *heap_caps_calloc(size_t n, size_t sz, int) { return calloc(n, sz); }
 static void heap_caps_free(void *p) { free(p); }
 #define MALLOC_CAP_SPIRAM 0
 #define MALLOC_CAP_8BIT 0
@@ -343,8 +344,11 @@ void wx_map_prepare(double lat, double lon, int tier) {
     if (tier < 0 || tier > 1) return;
     if (lat == s_roadLat && lon == s_roadLon && tier == s_roadTier) return;   // already built
 
-    if (!s_roadMask  && wx.roadsEnabled) s_roadMask  = (uint8_t *)heap_caps_malloc(ROAD_MASK_BYTES, MALLOC_CAP_SPIRAM);
-    if (!s_coastMask && wx.coastEnabled) s_coastMask = (uint8_t *)heap_caps_malloc(ROAD_MASK_BYTES, MALLOC_CAP_SPIRAM);
+    // Zeroed, not just taken. A projection that does not happen (the SD lock busy, no room
+    // for the scratch below) leaves a fresh mask untouched, and draw_map() then drew whatever
+    // PSRAM held as roads.
+    if (!s_roadMask  && wx.roadsEnabled) s_roadMask  = (uint8_t *)heap_caps_calloc(1, ROAD_MASK_BYTES, MALLOC_CAP_SPIRAM);
+    if (!s_coastMask && wx.coastEnabled) s_coastMask = (uint8_t *)heap_caps_calloc(1, ROAD_MASK_BYTES, MALLOC_CAP_SPIRAM);
 
     // The projection scratch is big (~430 KB) and is wanted only for the few milliseconds
     // this function runs, so it is taken and given back here rather than held all session.
