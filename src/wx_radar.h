@@ -2,9 +2,16 @@
 
 #include <stdint.h>
 
-#define WX_RADAR_SIZE 360
+// The whole dial since 2026-10-01 (was 360, a square in the middle of a round 466 screen:
+// nothing reached the outer ring, and the square's edge showed against the round plate).
+// Affordable because WX_RADAR_FRAMES went to 1: two 466x466 buffers plus the decode
+// buffer are ~1.3 MB of PSRAM, against ~1.8 MB for six 360 buffers before.
+#define WX_RADAR_SIZE 466
 #define WX_RADAR_SOURCE_SIZE 512
-#define WX_RADAR_FRAMES 5        // the past ~50 min of precipitation, one frame per ~10 min, cycled for motion.
+// One frame, refreshed every WX_RADAR_REFRESH_MS: the owner's call (2026-10-01), a radar
+// scope whose rain moves when the next sweep of data arrives rather than a looping film.
+// The animation code still runs for any value above 1.
+#define WX_RADAR_FRAMES 1
                                  // Raised from 3 when the owner asked to watch an hour go by. RainViewer
                                  // offers 12 to 13 past frames, so the source was never the limit; memory
                                  // is. Each frame is a 360x360 RGB565 buffer at 253 KB.

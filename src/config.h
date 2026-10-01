@@ -204,6 +204,16 @@ static const float RANGE_STEPS_KM[] = {10.0f, 20.0f, 30.0f, 50.0f, 100.0f};
 // day in the Sauerland on 2026-09-29 look like widespread rain: 96% of the "rain" pixels in
 // that tile were translucent, and every forecast app said 0 mm. 255 = measurable only.
 #define WX_RADAR_MIN_ALPHA  255
+// The weather map's radius, edge of the dial from the centre, and the RainViewer zoom that
+// covers it. One definition read by both the fetch/crop (wx_radar_client.cpp) and the range
+// shown on screen (ui.cpp), which used to be two tables that had to be kept equal by hand.
+// 40 km at zoom 7 since 2026-09-30 (was 80.47 km, 50 mi, at zoom 6): the owner's town in
+// detail, and half the road map to project. Zoom 7 is assumed to cover ~75 km (see WX_ZOOM
+// in wx_radar_client.cpp); the radius must stay below that or the crop runs off the tile.
+#define WX_RADAR_RANGE_KM     40.0
+#define WX_RADAR_FETCH_ZOOM   7
+#define WX_RADAR_FETCH_KM     75.0
+static_assert(WX_RADAR_RANGE_KM <= WX_RADAR_FETCH_KM, "the weather map would crop past the tile it fetched");
 #define CLOUD_IMAGE_REFRESH_MS 600000UL    // EUMETSAT MTG cloud imagery; cache for 10 minutes
 
 // ---------- Screen (CO5300 AMOLED) ----------

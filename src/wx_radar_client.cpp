@@ -54,7 +54,7 @@ static int s_maxX = -1, s_maxY = -1;
 // real numbers are off, the picture just crops a bit tighter or looser, it won't break.
 struct WxZoomSpec { double displayKm; int fetchZoomLevel; double fetchRangeKm; };
 static const WxZoomSpec WX_ZOOM[2] = {
-    { 80.4672,  6, 150.0 },   // 50mi
+    { WX_RADAR_RANGE_KM, WX_RADAR_FETCH_ZOOM, WX_RADAR_FETCH_KM },   // the map (config.h)
     { 160.9344, 5, 300.0 },   // 100mi
 };
 // 0xRRGGBB down to the 565 these buffers hold. The colour was hard-coded at 0x4A49 before

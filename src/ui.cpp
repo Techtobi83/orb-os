@@ -23,6 +23,7 @@ static inline void  heap_caps_free(void *p) { free(p); }
 #include "cloud_image.h"
 #include "airports.h"
 #include "config.h"
+extern bool host_location_name(char *out, size_t n);   // main.cpp / sim_main.cpp: the town, for {city}
 #include "splash_art.h"       // splash_art_decode() — boot-splash PNG, decoded on demand
 #include "splash_lines.h"     // the three standing lines, and the glass over them
 #include "text_tokens.h"       // {token} expansion, the same parser the Flight Tracker uses
@@ -206,7 +207,7 @@ static const char *wx_dist_unit(void) { return s_wxImperial ? "MI" : "KM"; }
 // the on-screen range label — keep the two in sync if the tiers ever change.
 // ui_set_wx_zoom() itself is defined below, after build_weather().
 static int s_wxZoom = 0;
-static const float WX_ZOOM_KM[2] = { 80.4672f, 160.9344f };
+static const float WX_ZOOM_KM[2] = { (float)WX_RADAR_RANGE_KM, 160.9344f };   // tier 0 is config.h's
 static const char *cardinal(float deg) {
     static const char *p[] = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
     int i = ((int)(deg + 22.5f) / 45) & 7;
@@ -414,6 +415,9 @@ static void wx_anim_cb(lv_timer_t *t) {
     const uint32_t gen = wx_radar_gen();
     const int n = wx_radar_gen_count(gen);
     if (n <= 0) return;
+    // One frame: it is already up (build_weather put it there), so re-setting the same buffer
+    // every five seconds would only repaint the map for nothing.
+    if (n == 1) return;
     s_wxAnimSlot = (s_wxAnimSlot + 1) % n;
     // Set how long THIS (newly shown) frame dwells before the next step: the newest frame
     // (highest slot index) holds 5s, every other frame holds 2s.
@@ -579,7 +583,12 @@ static void wx_text_refresh(void) {
         condN[d] = ok ? weather_condition(w.days[d].code) : "";
     }
 
+    // {city}: the town Settings > Location named (host_location_name cuts at the comma), so a
+    // theme can put the place under the centre of the map the way the Flight Tracker does.
+    char cityS[48] = "";
+    host_location_name(cityS, sizeof(cityS));
     const text_tokens::Tok toks[] = {
+        { "city", cityS },
         { "temp", tempS }, { "tempC", tempCS }, { "tempF", tempFS }, { "feels", feelsS },
         { "cond", condS }, { "humidity", humS }, { "wind", windS },
         { "windDir", windDirS }, { "windDeg", windDegS },
@@ -1316,7 +1325,7 @@ void ui_create(void) {
 
     s_wxCanvas = lv_canvas_create(wp);
     lv_obj_set_size(s_wxCanvas, WX_RADAR_SIZE, WX_RADAR_SIZE);
-    lv_obj_align(s_wxCanvas, LV_ALIGN_TOP_MID, 0, 52);
+    lv_obj_center(s_wxCanvas);   // the map is centred on the dial, whatever its size
     lv_obj_add_flag(s_wxCanvas, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_background(s_wxCanvas);
 
@@ -1336,12 +1345,12 @@ void ui_create(void) {
     lv_timer_create(wx_status_timer_cb, 500, nullptr);
     lv_obj_align(s_wxStatus, LV_ALIGN_TOP_MID, 0, 222);
 
-    const int ringSize[3] = { 360, 240, 120 };
+    const int ringSize[3] = { WX_RADAR_SIZE, WX_RADAR_SIZE * 2 / 3, WX_RADAR_SIZE / 3 };
     for (int i = 0; i < 3; ++i) {
         s_wxRings[i] = lv_obj_create(wp);
         lv_obj_remove_style_all(s_wxRings[i]);
         lv_obj_set_size(s_wxRings[i], ringSize[i], ringSize[i]);
-        lv_obj_align(s_wxRings[i], LV_ALIGN_TOP_MID, 0, 52 + (360 - ringSize[i]) / 2);
+        lv_obj_center(s_wxRings[i]);
         lv_obj_set_style_radius(s_wxRings[i], LV_RADIUS_CIRCLE, 0);
         // Colour is applied in build_weather() from the weather theme, not here: this runs
         // once and a theme can change afterwards. It used to be UI_GREEN, hard-coded, which
