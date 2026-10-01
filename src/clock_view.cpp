@@ -1684,6 +1684,14 @@ static void retime(void) {
 
 static void tick_cb(lv_timer_t * /*t*/) {
     if (lv_scr_act() != s_screen) return;
+    // No canvas, nothing to draw into. Not the same test as the one above: leaving the clock
+    // runs onExit (which frees s_buf) at the START of the slide to the next app, while LVGL
+    // still reports this as the active screen until the slide ends. A sweeping second hand
+    // ticks several times in that window, and sweep_frame() memcpy'd into the freed buffer:
+    // a StoreProhibited panic at s_buf + offset, read off the coredump on 2026-10-01 after
+    // the TechTobi theme (the first to sweep) rebooted the Orb on auto page. Every painter
+    // below assumes s_buf, so the guard is here, once, rather than in each of them.
+    if (!s_buf) return;
     // ...and not while something is drawn over the top of it. The guard above catches
     // another APP being on screen, because a switch changes the active screen. It does not
     // catch a full-screen panel on the top layer, which leaves this the active screen while
@@ -1827,6 +1835,10 @@ void clockview::onExit() {
     if (s_canvas) { lv_obj_del(s_canvas); s_canvas = nullptr; }
     if (s_buf)      { heap_caps_free(s_buf);      s_buf = nullptr; }
     if (s_rotCache) { heap_caps_free(s_rotCache); s_rotCache = nullptr; }
+    // The sweep's cache of everything under the second hand, a whole screen of it. It was left
+    // allocated while away, and it is a picture of a canvas that no longer exists.
+    if (s_under)    { heap_caps_free(s_under);    s_under = nullptr; }
+    s_underMin = -1; s_underHr = -1;
 }
 
 // ---- build ------------------------------------------------------------------
