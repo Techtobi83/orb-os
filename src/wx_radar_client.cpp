@@ -185,14 +185,16 @@ bool wx_plate_have() { return s_plateHave && s_plateCrop != nullptr; }
 // Is this point inside one of the weather map's keep-out zones?
 //
 // Zones are written in 466x466 screen coordinates, because that is what a designer is
-// looking at in Orb Studio. The radar image is 360x360 drawn at (53, 52) on that screen, so
-// the buffer coordinate is offset before it is tested. Getting this offset wrong would put
-// every zone 53 pixels from where it was drawn, which looks like the feature almost working.
+// looking at in Orb Studio. The radar image is WX_RADAR_SIZE square and centred on that
+// screen (ui.cpp lv_obj_center), so the buffer coordinate is offset by the same amount on
+// both axes before it is tested. Both offsets come from WX_RADAR_SIZE: when the map grew
+// from 360 to 466 the x offset followed and a hand-written y of 52 did not, which slid every
+// zone 52 px up and left the bottom of a design's frame under the rain (owner, 2026-10-01).
 static bool wx_in_zone(int bx, int by) {
     const theme_style::Weather &w = theme_style::weather();
     if (w.zoneCount <= 0) return false;
     const int x = bx + (466 - WX_RADAR_SIZE) / 2;
-    const int y = by + 52;
+    const int y = by + (466 - WX_RADAR_SIZE) / 2;
     bool anyInvert = false, insideInvert = false;
     for (int i = 0; i < w.zoneCount; ++i) {
         const theme_style::Zone &z = w.zones[i];
