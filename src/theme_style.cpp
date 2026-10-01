@@ -490,6 +490,15 @@ void load() {
             if (doc["secondSweep"].is<bool>())       s_clock.secondSweep = doc["secondSweep"].as<bool>();
             if (doc["secondRailway"].is<bool>())     s_clock.secondRailway = doc["secondRailway"].as<bool>();
             if (doc["dayRing"].is<bool>())           s_clock.dayRing = doc["dayRing"].as<bool>();
+            if (!doc["swing1"].isNull()) {
+                JsonVariantConst sw = doc["swing1"];
+                if (sw["amp"].is<float>()) s_clock.swing1.amp = sw["amp"].as<float>();
+                if (sw["hz"].is<float>())  s_clock.swing1.hz  = sw["hz"].as<float>();
+                if (s_clock.swing1.amp < 0.0f)   s_clock.swing1.amp = 0.0f;
+                if (s_clock.swing1.amp > 360.0f) s_clock.swing1.amp = 360.0f;
+                if (s_clock.swing1.hz < 0.0f)    s_clock.swing1.hz = 0.0f;
+                if (s_clock.swing1.hz > 5.0f)    s_clock.swing1.hz = 5.0f;
+            }
             if (!doc["dateDE"].isNull()) {
                 JsonVariantConst dd = doc["dateDE"];
                 if (dd["show"].is<bool>()) s_clock.dateDe.show = dd["show"].as<bool>();

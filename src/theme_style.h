@@ -530,6 +530,11 @@ struct Clock {
     // German date in a window, "MI 30", drawn in Sora 26 with the day in amber. Same origin
     // as dayRing. x/y are the text's centre on the dial.
     struct DateDe { bool show = false; int x = 339; int y = 233; } dateDe;
+    // The first static layer swinging about its pivot: amp degrees either side, hz swings a
+    // second (a balance wheel, TechTobi). 0 = still, as every static layer always was.
+    // Animated per sweep frame inside its own box (clock_view swing_refresh), so it costs
+    // that box rather than the dial, and only while the second hand sweeps.
+    struct Swing { float amp = 0.0f; float hz = 0.0f; } swing1;
     // THEME_CAPS 38. A virtual mainspring: the clock runs down and has to be wound with the
     // knob. See clock_wind.h for why it exists and what it refuses to do. Off unless a
     // design asks, because a stopped clock reads as a broken one to anybody who did not

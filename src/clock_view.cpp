@@ -1191,6 +1191,14 @@ void clock_view_reset_bg_anim() {
 }
 
 // overlay has to go back on TOP of the second hand and so cannot be baked into that cache.
+// The swinging static layer's angle now, in degrees (clock_style "swing1"). 0 when it is still.
+static float swing_deg() {
+    const theme_style::Clock::Swing &s = theme_style::clock().swing1;
+    if (s.amp <= 0.0f || s.hz <= 0.0f) return 0.0f;
+    const float t = (float)(lv_tick_get() % 600000u) / 1000.0f;   // wraps every 10 min, inside float precision
+    return s.amp * sinf(2.0f * (float)M_PI * s.hz * t);
+}
+
 static void compose_custom(const struct tm *ti, bool skipSecond, bool withOverlay) {
     // Decode the plate first: it's the whole visible dial and the largest buffer,
     // so it gets first claim on PSRAM. (Text is now a baked font, not a giant
@@ -1246,7 +1254,7 @@ static void compose_custom(const struct tm *ti, bool skipSecond, bool withOverla
     // kind 3/4 = the two static image layers — same pivot/center/blend metadata as
     // a hand, just always angle 0 (they never rotate, see custom_sprite.cpp).
     const float sec = ti->tm_sec, mins = ti->tm_min + sec / 60.0f, hrs = (ti->tm_hour % 12) + mins / 60.0f;
-    const float ang[5] = { hrs * 30.0f, mins * 6.0f, sec * 6.0f, 0.0f, 0.0f };
+    const float ang[5] = { hrs * 30.0f, mins * 6.0f, sec * 6.0f, swing_deg(), 0.0f };
     // Geometry, draw order, and the per-hand show gate come from the active theme at
     // runtime (theme_style, fed by /themes/<slug>/clock_style.json) rather than from the
     // compile-time CUSTOM_* macros, so hands travel with the theme like every other
@@ -1490,6 +1498,80 @@ static bool rebuild_under(const struct tm *ti) {
     return true;
 }
 
+// The swinging static layer's box: the circle its sprite sweeps about its pivot, so every
+// angle of the swing fits inside it.
+static bool swing_box(lv_area_t &r) {
+    const theme_style::Clock &cs = theme_style::clock();
+    const theme_style::Hand &st = cs.hand[3];
+    if (cs.swing1.amp <= 0.0f || cs.swing1.hz <= 0.0f || !st.show || cs.plateFollow > 0) return false;
+    CustomSprite spr = custom_hand(3);
+    if (!spr.data) return false;
+    const float rx = fmaxf((float)st.pivotX, (float)(spr.w - st.pivotX));
+    const float ry = fmaxf((float)st.pivotY, (float)(spr.h - st.pivotY));
+    const int reach = (int)ceilf(sqrtf(rx * rx + ry * ry)) + 1;
+    r.x1 = st.centerX - reach; r.y1 = st.centerY - reach;
+    r.x2 = st.centerX + reach; r.y2 = st.centerY + reach;
+    if (r.x1 < 0) r.x1 = 0;
+    if (r.y1 < 0) r.y1 = 0;
+    if (r.x2 > SCREEN_W - 1) r.x2 = SCREEN_W - 1;
+    if (r.y2 > SCREEN_H - 1) r.y2 = SCREEN_H - 1;
+    return true;
+}
+
+// Rebuild the swinging layer's box INSIDE the sweep cache, at this moment's angle, with
+// everything the cache holds above it: the plate, the static layers, and the hour and minute
+// hands with their shadows, in the design's order and clipped to the box. Then the box is
+// added to this frame's runs, so it is restored into the canvas and the second hand is drawn
+// back over it. That is what keeps the hands ON TOP of a swinging balance wheel: the wheel is
+// composed under them, never laid over the finished dial.
+//
+// The painters all draw into s_buf, so for the length of this s_buf points at the cache.
+static bool swing_refresh(lv_area_t &r) {
+    if (!s_under || !swing_box(r)) return false;
+    const theme_style::Clock &cs = theme_style::clock();
+    lv_color_t *const canvas = s_buf;
+    s_buf = s_under;
+    s_clipX0 = r.x1; s_clipY0 = r.y1; s_clipX1 = r.x2; s_clipY1 = r.y2;
+    s_runLo = nullptr; s_runHi = nullptr;
+
+    const uint16_t *plate = custom_plate_frame(s_bgFrame);
+    if (!plate) plate = custom_plate();
+    const uint16_t bg = lv_color_hex(cs.bg).full;
+    for (int y = r.y1; y <= r.y2; ++y) {
+        lv_color_t *row = &s_buf[y * SCREEN_W + r.x1];
+        const int n = r.x2 - r.x1 + 1;
+        if (plate) memcpy(row, &plate[y * SCREEN_W + r.x1], (size_t)n * sizeof(lv_color_t));
+        else for (int i = 0; i < n; ++i) row[i].full = bg;
+    }
+    struct tm ti;
+    time_for_face(&ti);
+    const float sec = (float)ti.tm_sec, mins = ti.tm_min + sec / 60.0f, hrs = (ti.tm_hour % 12) + mins / 60.0f;
+    const float ang[5] = { hrs * 30.0f, mins * 6.0f, sec * 6.0f, swing_deg(), 0.0f };
+    if (cs.shadowOn) {
+        for (int i = 0; i < cs.orderN; ++i) {
+            const int k = cs.order[i];
+            if (k == 2) break;                         // the cache stops at the second hand
+            if (k < 0 || k > 1 || !cs.hand[k].show) continue;
+            CustomSprite sh = custom_shadow(k);
+            if (sh.data) blend_shadow(sh.data, sh.w, sh.h, cs.hand[k].pivotX, cs.hand[k].pivotY,
+                                      (float)(cs.hand[k].centerX + cs.shadowDX),
+                                      (float)(cs.hand[k].centerY + cs.shadowDY), ang[k]);
+        }
+    }
+    for (int i = 0; i < cs.orderN; ++i) {
+        const int k = cs.order[i];
+        if (k == 2) break;
+        if (k < 0 || k > 4 || !cs.hand[k].show) continue;
+        const theme_style::Hand &hd = cs.hand[k];
+        CustomSprite spr = custom_hand(k);
+        if (spr.data) blend_custom_hand(spr.data, spr.w, spr.h, hd.pivotX, hd.pivotY,
+                                        (float)hd.centerX, (float)hd.centerY, ang[k], hd.blend);
+    }
+    s_buf = canvas;
+    clip_reset();
+    return true;
+}
+
 // One frame of sweep: restore the hand's box out of the cache, turn the hand into it, put
 // the glass back over that box, and invalidate only that.
 static void sweep_frame(float secs) {
@@ -1504,6 +1586,9 @@ static void sweep_frame(float secs) {
     if (s_prevSecValid) area_join(box, s_prevSec);
     s_prevSec = second_box(ang);
     s_prevSecValid = true;
+    lv_area_t swingR;
+    const bool swing = swing_refresh(swingR);
+    if (swing) area_join(box, swingR);
 
     s_clipX0 = box.x1; s_clipY0 = box.y1; s_clipX1 = box.x2; s_clipY1 = box.y2;
 
@@ -1540,6 +1625,10 @@ static void sweep_frame(float secs) {
             }
         } else {
             lo = box.x1; hi = box.x2;
+        }
+        if (swing && y >= swingR.y1 && y <= swingR.y2) {   // the swing's box is restored whole
+            if (swingR.x1 < lo) lo = swingR.x1;
+            if (swingR.x2 > hi) hi = swingR.x2;
         }
         if (lo < box.x1) lo = box.x1;
         if (hi > box.x2) hi = box.x2;
