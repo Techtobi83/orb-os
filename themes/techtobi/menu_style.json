@@ -1,0 +1,45 @@
+{
+  "current": {
+    "show": true,
+    "x": 233,
+    "y": 233,
+    "color": 12646570,
+    "opa": 255,
+    "glow": 19,
+    "glowColor": 5025645,
+    "fmt": "{name}",
+    "upper": false,
+    "align": 1,
+    "wrapWidth": 390,
+    "lineGap": 0,
+    "lineStep": 52
+  },
+  "prev": {
+    "show": false,
+    "x": 233,
+    "y": -80,
+    "color": 6975608,
+    "opa": 255,
+    "glow": 0,
+    "glowColor": 6975608,
+    "fmt": "{name}",
+    "upper": false,
+    "align": 1,
+    "lineGap": 0,
+    "lineStep": 19
+  },
+  "next": {
+    "show": false,
+    "x": 233,
+    "y": -80,
+    "color": 6975608,
+    "opa": 255,
+    "glow": 0,
+    "glowColor": 6975608,
+    "fmt": "{name}",
+    "upper": false,
+    "align": 1,
+    "lineGap": 0,
+    "lineStep": 19
+  }
+}
