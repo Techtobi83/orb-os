@@ -71,10 +71,11 @@ void route_cache_put(const char *callsign, const char *from, const char *to) {
 // The 3-letter IATA airport code ("JFK", "LHR") — short, unambiguous, and what a
 // {from}/{to} banner actually has room for. Falls back to a cleaned-up name (then
 // municipality) only on the rare response that has no IATA code at all.
-bool route_fetch(const char *callsign, char *from, size_t fn, char *to, size_t tn) {
+RouteResult route_fetch(const char *callsign, char *from, size_t fn, char *to, size_t tn) {
     if (fn) from[0] = 0;
     if (tn) to[0] = 0;
-    if (!callsign || !callsign[0] || WiFi.status() != WL_CONNECTED) return false;
+    if (!callsign || !callsign[0]) return ROUTE_UNKNOWN;
+    if (WiFi.status() != WL_CONNECTED) return ROUTE_FAILED;
 
     // strip spaces from the callsign
     char cs[12];
@@ -82,7 +83,7 @@ bool route_fetch(const char *callsign, char *from, size_t fn, char *to, size_t t
     for (const char *p = callsign; *p && j < sizeof(cs) - 1; ++p)
         if (*p != ' ') cs[j++] = *p;
     cs[j] = 0;
-    if (j == 0) return false;
+    if (j == 0) return ROUTE_UNKNOWN;
 
     char url[128];
     // THROUGH THE GATEWAY, because adsbdb stopped answering this device.
@@ -112,23 +113,22 @@ bool route_fetch(const char *callsign, char *from, size_t fn, char *to, size_t t
     http.setReuse(false);
     http.setConnectTimeout(3000);   // short: runs on the feed task, don't stall the live poll
     http.setTimeout(6000);
-    if (!http.begin(client, url)) return false;
+    if (!http.begin(client, url)) return ROUTE_FAILED;
     // setUserAgent, not addHeader: HTTPClient silently DROPS a "User-Agent" added as a
     // header and sends its own default. Same trap that had the ADS-B feed introducing this
     // device as "ESP32HTTPClient" until it started being refused for it.
     http.setUserAgent(ADSB_USER_AGENT);
 
     const int code = http.GET();
-    if (code != 200) { http.end(); return false; }
+    if (code != 200) { http.end(); return ROUTE_FAILED; }
 
     // {"from":"SMF","to":"PHX"}, or {} for a callsign nobody knows, which is normal rather
     // than an error. No filter needed at this size.
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, http.getStream());
     http.end();
-    if (err) return false;
-
+    if (err) return ROUTE_FAILED;
     snprintf(from, fn, "%s", doc["from"] | "");
     snprintf(to,   tn, "%s", doc["to"]   | "");
-    return (from[0] || to[0]);
+    return (from[0] || to[0]) ? ROUTE_FOUND : ROUTE_UNKNOWN;
 }

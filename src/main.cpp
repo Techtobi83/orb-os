@@ -588,19 +588,43 @@ static void adsb_task(void*) {
             // Then the on-demand lookups for the selected aircraft. Their timeouts are kept
             // short (see photo_client / route_client) so a slow photo server can't freeze the
             // feed for long; the next loop iteration polls again as soon as they return.
+            // A FAILED lookup is not an unknown route. It used to be stored the same way, as an
+            // empty answer, and an aircraft whose one lookup hit a timeout or a WiFi blip then
+            // showed no "from -> to" line for as long as it stayed selected: "sometimes it
+            // works, sometimes not" (owner, 2026-10-01). Now only the service's own empty
+            // answer is final; a failure is retried every few seconds, three times at most.
+            static char     s_routeFailCall[12] = "";
+            static uint8_t  s_routeFails = 0;
+            static uint32_t s_routeFailAt = 0;
             char wantCall[12];
-            if (route_pending(wantCall, sizeof(wantCall))) {
+            if (route_pending(wantCall, sizeof(wantCall))
+                && !(strcmp(wantCall, s_routeFailCall) == 0 && millis() - s_routeFailAt < 5000UL)) {
                 char from[40] = "", to[40] = "";
                 if (route_cache_get(wantCall, from, sizeof(from), to, sizeof(to))) {
                     route_store(wantCall, from, to);                       // NVS hit, no network
                     Serial.printf("[route] %s (cache): '%s' -> '%s'\n", wantCall, from, to);
-                } else if (route_fetch(wantCall, from, sizeof(from), to, sizeof(to))) {
-                    route_store(wantCall, from, to);
-                    route_cache_put(wantCall, from, to);                  // remember across reboots
-                    Serial.printf("[route] %s (net): '%s' -> '%s'\n", wantCall, from, to);
                 } else {
-                    route_store(wantCall, from, to);   // empty -> don't refetch this session
-                    Serial.printf("[route] %s: no route\n", wantCall);
+                    const RouteResult rr = route_fetch(wantCall, from, sizeof(from), to, sizeof(to));
+                    if (rr == ROUTE_FOUND) {
+                        route_store(wantCall, from, to);
+                        route_cache_put(wantCall, from, to);              // remember across reboots
+                        Serial.printf("[route] %s (net): '%s' -> '%s'\n", wantCall, from, to);
+                    } else if (rr == ROUTE_UNKNOWN) {
+                        route_store(wantCall, from, to);   // the service knows none: final for this session
+                        Serial.printf("[route] %s: no route known\n", wantCall);
+                    } else {
+                        if (strcmp(wantCall, s_routeFailCall) != 0) {
+                            snprintf(s_routeFailCall, sizeof(s_routeFailCall), "%s", wantCall);
+                            s_routeFails = 0;
+                        }
+                        s_routeFailAt = millis();
+                        if (++s_routeFails >= 3) {
+                            route_store(wantCall, from, to);   // gave up: stop asking this session
+                            Serial.printf("[route] %s: lookup failed 3 times, giving up\n", wantCall);
+                        } else {
+                            Serial.printf("[route] %s: lookup failed, retrying in 5 s\n", wantCall);
+                        }
+                    }
                 }
             }
             char wantHex[10];
