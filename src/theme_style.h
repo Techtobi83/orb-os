@@ -522,6 +522,14 @@ struct Clock {
     // THEME_CAPS 52. The railway stop on that sweep: 58.5 seconds round, then a wait at 12.
     // Read only while sweeping, and only when this design asked for it.
     bool      secondRailway = false;
+    // The 24-hour day ring round the dial (day_ring.h, the forecast screen's ring): today's
+    // daylight lit, sunrise and sunset, a sun or moon at the current time. Added for the
+    // TechTobi theme on 2026-09-30; not a THEME_CAPS level, because Orb Studio has no
+    // control for it yet and a theme from Studio simply never asks.
+    bool      dayRing = false;
+    // German date in a window, "MI 30", drawn in Sora 26 with the day in amber. Same origin
+    // as dayRing. x/y are the text's centre on the dial.
+    struct DateDe { bool show = false; int x = 339; int y = 233; } dateDe;
     // THEME_CAPS 38. A virtual mainspring: the clock runs down and has to be wound with the
     // knob. See clock_wind.h for why it exists and what it refuses to do. Off unless a
     // design asks, because a stopped clock reads as a broken one to anybody who did not

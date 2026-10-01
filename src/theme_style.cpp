@@ -489,6 +489,13 @@ void load() {
             if (doc["windCrankRest"].is<int>())      s_clock.windCrankRest = doc["windCrankRest"].as<int>();
             if (doc["secondSweep"].is<bool>())       s_clock.secondSweep = doc["secondSweep"].as<bool>();
             if (doc["secondRailway"].is<bool>())     s_clock.secondRailway = doc["secondRailway"].as<bool>();
+            if (doc["dayRing"].is<bool>())           s_clock.dayRing = doc["dayRing"].as<bool>();
+            if (!doc["dateDE"].isNull()) {
+                JsonVariantConst dd = doc["dateDE"];
+                if (dd["show"].is<bool>()) s_clock.dateDe.show = dd["show"].as<bool>();
+                if (dd["x"].is<int>())     s_clock.dateDe.x = dd["x"].as<int>();
+                if (dd["y"].is<int>())     s_clock.dateDe.y = dd["y"].as<int>();
+            }
             if (doc["windTitleOpa"].is<int>())       s_clock.windTitleOpa  = doc["windTitleOpa"].as<int>();
             if (doc["windAskOpa"].is<int>())         s_clock.windAskOpa    = doc["windAskOpa"].as<int>();
             if (doc["windTurnsOpa"].is<int>())       s_clock.windTurnsOpa  = doc["windTurnsOpa"].as<int>();

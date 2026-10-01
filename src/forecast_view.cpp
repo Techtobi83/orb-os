@@ -1,4 +1,5 @@
 #include "forecast_view.h"
+#include "day_ring.h"
 #include "weather.h"
 #include "wx_icons.h"
 #include <math.h>
@@ -19,10 +20,8 @@ namespace forecastview {
 namespace {
 
 // ---- the look (the preview "Tagesring (jetzt)", 2026-09-30) --------------------------------
-constexpr int  SCR = 466, C = SCR / 2;
-constexpr int  RING_R = 214, RING_W = 10;            // centre line and width of the day ring
-constexpr int  LABEL_R = 183;                        // sunrise/sunset times, inside the ring
-constexpr int  MARK_HALO = 68, MARK_DISC = 54;       // time marker: faint halo, black disc under the symbol
+// The ring and its sun/moon marker are day_ring's, shared with the clock.
+using day_ring::SCR; using day_ring::C; using day_ring::RING_R; using day_ring::MARK_HALO;
 constexpr int  COND_MAX_W = 372;                     // widest condition line inside the ring at its height
 // Tomorrow's capsule. It must stay clear of the time marker's halo wherever the marker is on
 // the ring: its far corner lies within RING_R - MARK_HALO / 2 = 180 px of the centre. At 270
@@ -37,12 +36,13 @@ constexpr int CAP_CLEAR  = RING_R - MARK_HALO / 2 - CAP_H / 2;
 static_assert(CAP_END_DX * CAP_END_DX + CAP_END_DY * CAP_END_DY <= CAP_CLEAR * CAP_CLEAR,
               "tomorrow's capsule reaches the ring: the sun/moon marker would cover it");
 constexpr uint32_t COL_TEXT   = 0xF2F0EA, COL_TEXT2 = 0xE4E1D9, COL_DIM = 0x8F8B83;
-constexpr uint32_t COL_RING   = 0x161B24, COL_SUN = 0xF5B342;
+constexpr uint32_t COL_SUN    = 0xF5B342;
 constexpr uint32_t COL_MOON   = 0xE9E6DD, COL_CLOUD = 0xDDE3EC, COL_RAIN = 0x5AB4F0;
 constexpr uint32_t COL_SNOW   = 0xE9EEF5, COL_FOG   = 0xC9CDD3, COL_CAPSULE = 0x10151C;
 constexpr uint32_t STALE_MS   = 2UL * 60 * 60 * 1000; // older than this and the temperature greys
 
-lv_obj_t *s_scr, *s_ring, *s_rise, *s_set, *s_halo, *s_disc, *s_mark;
+lv_obj_t *s_scr;
+day_ring::Ring s_ring;
 lv_obj_t *s_bgBase, *s_bgSun, *s_bgOver;               // large symbol: base, sun behind a cloud, layer
 lv_obj_t *s_loc, *s_temp, *s_cond;
 lv_obj_t *s_cap, *s_capDay, *s_capBase, *s_capOver, *s_capTemp, *s_capRain;
@@ -105,27 +105,6 @@ const char *day_abbrev(const char *iso) {
     return DE[t.tm_wday % 7];
 }
 
-// ---- geometry ------------------------------------------------------------------------------
-// The ring is a 24-hour clock with noon at the top: minutes after midnight -> degrees
-// clockwise from 12 o'clock.
-float ring_deg(int minutes) { return (minutes / 60.0f - 12.0f) * 15.0f; }
-void  ring_point(int minutes, int r, int &x, int &y) {
-    const float a = ring_deg(minutes) * (float)M_PI / 180.0f;
-    x = C + (int)lroundf(r * sinf(a));
-    y = C - (int)lroundf(r * cosf(a));
-}
-// LVGL arcs count from 3 o'clock.
-int lv_deg(int minutes) { int a = (int)lroundf(ring_deg(minutes)) - 90; return ((a % 360) + 360) % 360; }
-
-bool local_now(int &minutes) {
-    time_t now = time(nullptr);
-    struct tm t;
-    localtime_r(&now, &t);
-    if (t.tm_year < 120) return false;                  // clock not set yet
-    minutes = t.tm_hour * 60 + t.tm_min;
-    return true;
-}
-
 // ---- building blocks -----------------------------------------------------------------------
 lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint32_t color) {
     lv_obj_t *l = lv_label_create(parent);
@@ -150,19 +129,6 @@ void show_img(lv_obj_t *img, const lv_img_dsc_t *dsc, int x, int y, uint32_t col
     lv_obj_set_style_img_recolor(img, lv_color_hex(color), 0);
     lv_obj_clear_flag(img, LV_OBJ_FLAG_HIDDEN);
 }
-
-lv_obj_t *circle(lv_obj_t *parent, int d, uint32_t color, lv_opa_t opa) {
-    lv_obj_t *o = lv_obj_create(parent);
-    lv_obj_remove_style_all(o);
-    lv_obj_set_size(o, d, d);
-    lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(o, lv_color_hex(color), 0);
-    lv_obj_set_style_bg_opa(o, opa, 0);
-    lv_obj_clear_flag(o, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-    return o;
-}
-
-void place_center(lv_obj_t *o, int x, int y) { lv_obj_align(o, LV_ALIGN_CENTER, x - C, y - C); }
 
 // ---- drawing -------------------------------------------------------------------------------
 void draw_symbol(const Look &k, bool day) {
@@ -203,8 +169,6 @@ void draw_capsule_icon(int code) {
 void refresh() {
     WeatherSnapshot w;
     const bool have = weather_get(w) && w.valid;
-    int now = 0;
-    const bool clock = local_now(now);
 
     // Location: whatever Settings > Location named (the town only; host_location_name cuts
     // at the first comma for every screen). Nothing named, nothing drawn.
@@ -217,50 +181,7 @@ void refresh() {
         lv_obj_add_flag(s_loc, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // Daylight on the ring, from today's sunrise and sunset.
-    const WeatherDay *today = (have && w.dayCount > 0) ? &w.days[0] : nullptr;
-    const bool sun = today && today->sunriseMin >= 0 && today->sunsetMin > today->sunriseMin;
-    if (sun) {
-        lv_arc_set_angles(s_ring, lv_deg(today->sunriseMin), lv_deg(today->sunsetMin));
-        lv_obj_set_style_arc_opa(s_ring, LV_OPA_COVER, LV_PART_INDICATOR);
-        char b[8];
-        int x, y;
-        snprintf(b, sizeof(b), "%02d:%02d", today->sunriseMin / 60, today->sunriseMin % 60);
-        lv_label_set_text(s_rise, b);
-        ring_point(today->sunriseMin, LABEL_R, x, y); place_center(s_rise, x, y);
-        snprintf(b, sizeof(b), "%02d:%02d", today->sunsetMin / 60, today->sunsetMin % 60);
-        lv_label_set_text(s_set, b);
-        ring_point(today->sunsetMin, LABEL_R, x, y); place_center(s_set, x, y);
-        lv_obj_clear_flag(s_rise, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_set, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_set_style_arc_opa(s_ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
-        lv_obj_add_flag(s_rise, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_set, LV_OBJ_FLAG_HIDDEN);
-    }
-    // Without sun times, day is 06:00-18:00: a guess, but only the symbols depend on it.
-    const bool day = sun ? (now >= today->sunriseMin && now < today->sunsetMin)
-                         : (now >= 6 * 60 && now < 18 * 60);
-
-    // The time marker: a sun by day, a moon by night, on the ring at the current time.
-    if (clock) {
-        int x, y;
-        ring_point(now, RING_R, x, y);
-        place_center(s_halo, x, y);
-        place_center(s_disc, x, y);
-        lv_obj_set_style_bg_color(s_halo, lv_color_hex(day ? COL_SUN : COL_MOON), 0);
-        lv_obj_set_style_bg_opa(s_halo, day ? 36 : 26, 0);
-        show_img(s_mark, day ? &wxi_sun_m : &wxi_moon_m,
-                 x - WXI_FRAME_M / 2 + (day ? WXI_SUN_M_X : WXI_MOON_M_X),
-                 y - WXI_FRAME_M / 2 + (day ? WXI_SUN_M_Y : WXI_MOON_M_Y),
-                 day ? COL_SUN : COL_MOON);
-        lv_obj_clear_flag(s_halo, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_disc, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(s_halo, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_disc, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_mark, LV_OBJ_FLAG_HIDDEN);
-    }
+    const bool day = day_ring::update(s_ring);   // the ring, its times and the sun/moon
 
     if (!have) {
         // Honest about which thing is missing: the network, or the answer.
@@ -324,23 +245,7 @@ void init() {
     s_bgBase = alpha_img(s_scr);
     s_bgOver = alpha_img(s_scr);
 
-    s_ring = lv_arc_create(s_scr);
-    lv_obj_set_size(s_ring, 2 * RING_R + RING_W, 2 * RING_R + RING_W);
-    lv_obj_center(s_ring);
-    lv_obj_remove_style(s_ring, nullptr, LV_PART_KNOB);
-    lv_obj_clear_flag(s_ring, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_pad_all(s_ring, 0, 0);
-    lv_arc_set_bg_angles(s_ring, 0, 360);
-    lv_obj_set_style_arc_width(s_ring, RING_W, LV_PART_MAIN);
-    lv_obj_set_style_arc_color(s_ring, lv_color_hex(COL_RING), LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(s_ring, false, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(s_ring, RING_W, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(s_ring, lv_color_hex(COL_SUN), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_rounded(s_ring, true, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_opa(s_ring, LV_OPA_TRANSP, LV_PART_INDICATOR);
-
-    s_rise = label(s_scr, &font_sora_15, COL_SUN);
-    s_set  = label(s_scr, &font_sora_15, COL_SUN);
+    day_ring::create_track(s_ring, s_scr);
 
     s_loc = label(s_scr, &font_sora_19b, COL_TEXT);
     lv_obj_set_style_text_letter_space(s_loc, 5, 0);
@@ -376,10 +281,7 @@ void init() {
     lv_label_set_recolor(s_capTemp, true);
     s_capRain = label(s_cap, &font_sora_20, COL_RAIN);
 
-    // The marker sits over the ring: a faint halo, a black disc that cuts the ring, the symbol.
-    s_halo = circle(s_scr, MARK_HALO, COL_MOON, 26);
-    s_disc = circle(s_scr, MARK_DISC, 0x000000, LV_OPA_COVER);
-    s_mark = alpha_img(s_scr);
+    day_ring::create_marker(s_ring, s_scr);   // over the ring and the text
 
     s_tick = lv_timer_create(tick_cb, 30000, nullptr);
     refresh();

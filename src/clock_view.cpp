@@ -68,6 +68,7 @@ static void time_for_face(struct tm *ti) {
 #include "custom_text.h"    // CUSTOM_HAS_TEXT* (compile-time show/hide gate) / CUSTOM_TEXT*_FONT (compiled glyphs, not per-theme — see theme_style.h)
 #include "custom_sprite.h"  // custom_plate()/custom_overlay()/custom_hand()
 #include "theme_style.h"
+#include "day_ring.h"      // the 24-hour day ring a theme can ask for ("dayRing")
 #include "theme_font.h"   // per-theme fonts, with the compiled font as fallback    // per-theme bg/text position/color/format — the runtime half of custom_text.h's macros (theme_style.h explains what stays compile-time and why)
 
 // ---- palette ----------------------------------------------------------------
@@ -624,6 +625,34 @@ static void fill_plate(int x, int y, int w, int h, int radius, lv_color_t col, l
             *dst = lv_color_mix(col, *dst, a);
         }
     }
+}
+
+// The German date window, "MI 30" (clock_style "dateDE"). Into the canvas and on the same
+// side of the hands as the banners, so the hands sweep over it the way they sweep over a real
+// date window. Sora 26, the weekday in the dial's white and the day in amber. strftime cannot
+// do this: newlib has no German locale, which is why it is its own painter and not a format.
+LV_FONT_DECLARE(font_sora_26);
+static void draw_date_de(const struct tm *ti) {
+    const theme_style::Clock::DateDe &d = theme_style::clock().dateDe;
+    if (!d.show || s_noTime || !s_canvas) return;
+    static const char *WD[7] = { "SO", "MO", "DI", "MI", "DO", "FR", "SA" };
+    char wd[4], day[4];
+    snprintf(wd, sizeof(wd), "%s ", WD[ti->tm_wday % 7]);
+    snprintf(day, sizeof(day), "%d", ti->tm_mday);
+    const lv_font_t *f = &font_sora_26;
+    lv_point_t a, b;
+    lv_txt_get_size(&a, wd, f, 1, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    lv_txt_get_size(&b, day, f, 1, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    const lv_coord_t x0 = (lv_coord_t)(d.x - (a.x + b.x) / 2);
+    const lv_coord_t y0 = (lv_coord_t)(d.y - lv_font_get_line_height(f) / 2);
+    lv_draw_label_dsc_t ld;
+    lv_draw_label_dsc_init(&ld);
+    ld.font = f;
+    ld.letter_space = 1;
+    ld.color = lv_color_hex(0xF2F0EA);
+    lv_canvas_draw_text(s_canvas, x0, y0, a.x + 4, &ld, wd);
+    ld.color = lv_color_hex(0xF5B342);
+    lv_canvas_draw_text(s_canvas, x0 + a.x, y0, b.x + 4, &ld, day);
 }
 
 static void draw_baked_text(const lv_font_t *font, const char *fmt, int bx, int by,
@@ -1196,6 +1225,7 @@ static void compose_custom(const struct tm *ti, bool skipSecond, bool withOverla
     // has always done; drawn after, the words sit on top, which a date window or a signature
     // across the dial wants. THEME_CAPS 43.
     auto draw_banners = [&]() {
+        draw_date_de(ti);
         {
             const theme_style::ClockText &t = theme_style::clock().text1;
             if (t.show) {
@@ -1682,6 +1712,18 @@ static void retime(void) {
     lv_timer_set_period(s_tick, sweep_possible() ? sweep_period() : 1000);
 }
 
+// The day ring, when the theme asks for it (clock_style "dayRing"). LVGL objects over the
+// canvas rather than pixels in it: the ring lies outside the hands' reach, so the hands never
+// need to pass over it, and it only changes once a minute.
+static day_ring::Ring s_ring;
+static bool           s_ringOn = false;
+static uint32_t       s_ringAt = 0;
+static void ring_refresh() {
+    if (!s_ringOn) return;
+    day_ring::update(s_ring);
+    s_ringAt = lv_tick_get();
+}
+
 static void tick_cb(lv_timer_t * /*t*/) {
     if (lv_scr_act() != s_screen) return;
     // No canvas, nothing to draw into. Not the same test as the one above: leaving the clock
@@ -1701,6 +1743,9 @@ static void tick_cb(lv_timer_t * /*t*/) {
     // somebody spent winding, with all of it discarded because a hidden object's
     // invalidation is dropped. It was the whole of the hitch.
     if (orb_screen_covered()) return;
+    // Every 30 s once the ring has what it needs; every 2 s until then, so it appears within
+    // moments of the forecast or the clock arriving after boot rather than up to 30 s later.
+    if (s_ringOn && lv_tick_elaps(s_ringAt) > (s_ring.complete ? 30000u : 2000u)) ring_refresh();
     struct tm ti;
     time_for_face(&ti);
 
@@ -1818,6 +1863,7 @@ void clockview::onEnter() {
         lv_obj_move_background(s_canvas);
         lv_canvas_fill_bg(s_canvas, COL_BLACK, LV_OPA_COVER);
     }
+    ring_refresh();
 }
 
 void clockview::onExit() {
@@ -1903,6 +1949,12 @@ void clockview::init() {
     // OFFICE minute hand + rim glow sprite is pre-decoded here (once) so the first Office
     // redraw doesn't pay the PNG-decode cost — see draw_office_minute_sprite().
     if (!office_minute_sprite()) Serial.println("[clock] office minute sprite decode failed");
+
+    if (theme_style::clock().dayRing) {   // created after the canvas's slot, so it draws over it
+        day_ring::create_track(s_ring, s_screen);
+        day_ring::create_marker(s_ring, s_screen);
+        s_ringOn = true;
+    }
 
     apply_face();
     s_tick = lv_timer_create(tick_cb, 1000, nullptr);
