@@ -663,6 +663,27 @@ static inline float sweepTrailDeg() { return customStyled() ? (float)theme_style
 // forward-declaration pattern apply_grid_visibility() already uses in this file.
 static void draw_glow(lv_draw_ctx_t *d, lv_point_t pos, float baseR, float glowPx, lv_color_t color);
 
+// The faintest opacity at which `c` still keeps its hue on this RGB565 panel.
+//
+// Blending a colour at a few percent into a dark pixel leaves each channel only a step or
+// two, and the steps are uneven: red and blue have 5 bits, green has 6. So the faint end of
+// a trail loses its red before its green, and an amber sweep fades out through GREEN. The
+// owner saw exactly that on the TechTobi theme on 2026-10-01; the green Cold War sweep never
+// showed it, because there green is the colour. Both sweeps, aircraft and weather, call this.
+// Below this, the trail's lines are not drawn:
+// the colour's own dominant channel would get fewer than two steps, and what was drawn would
+// not be the colour asked for. Dominant channel by its share of full scale, so a green
+// theme's cut-off is set by its green (about 3.5 %) and an amber one's by its red (about 7 %).
+static lv_opa_t hue_safe_min_opa(lv_color_t c) {
+    const lv_color32_t c32 = { .full = lv_color_to32(c) };
+    const int r5 = c32.ch.red >> 3, g6 = c32.ch.green >> 2, b5 = c32.ch.blue >> 3;
+    const float fr = r5 / 31.0f, fg = g6 / 63.0f, fb = b5 / 31.0f;
+    const int units = (fg >= fr && fg >= fb) ? g6 : (fr >= fb ? r5 : b5);
+    if (units <= 0) return 255;
+    const int need = (2 * 255 + units - 1) / units;      // two steps of the dominant channel
+    return (lv_opa_t)(need < 2 ? 2 : (need > 255 ? 255 : need));
+}
+
 // The weather map's sweep. Its own object, its own colours, its own settings file.
 //
 // Written separately rather than by parameterising the Flight Tracker's, deliberately. The
@@ -692,11 +713,14 @@ static void wx_sweep_draw_cb(lv_event_t *e) {
     ld.color = lv_color_hex(ws.sweepColor);
     ld.width = (lv_coord_t)(ws.sweepTrailWidth < 1 ? 1 : ws.sweepTrailWidth);
     ld.round_start = 1; ld.round_end = 1;
+    // Same floor as the Flight Tracker's trail, for the same reason: without it an amber
+    // weather sweep fades out through green, exactly as the aircraft one did.
+    const lv_opa_t minOpa = hue_safe_min_opa(ld.color);
     for (int i = steps; i >= 1; --i) {
         const float frac = 1.0f - (float)i / (float)steps;
         const float ang  = s_wxSweepDeg - (float)i * (trailDeg / (float)steps);
         ld.opa = (lv_opa_t)(frac * frac * trailOpaMax);
-        if (ld.opa < 2) continue;
+        if (ld.opa < minOpa) continue;
         lv_point_t p2 = rim_point(ang, R);
         lv_draw_line(dctx, &ld, &center, &p2);
     }
@@ -741,11 +765,12 @@ static void sweep_draw_cb(lv_event_t *e) {
     ld.width = customStyled() ? (lv_coord_t)theme_style::radar().sweepTrailWidth : 5;
     ld.round_start = 1;
     ld.round_end = 1;
+    const lv_opa_t minOpa = hue_safe_min_opa(trailColor);   // fainter than this changes colour
     for (int i = steps; i >= 1; --i) {
         const float frac = 1.0f - (float)i / (float)steps;
         const float ang  = s_sweepDeg - (float)i * (trailDeg / (float)steps);
         ld.opa = (lv_opa_t)(frac * frac * trailOpaMax);
-        if (ld.opa < 2) continue;
+        if (ld.opa < minOpa) continue;
         lv_point_t p2 = rim_point(ang, R);
         lv_draw_line(dctx, &ld, &center, &p2);
     }
