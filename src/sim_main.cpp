@@ -180,6 +180,10 @@ bool host_sound_chime() { return true; }
 void host_sound_set_chime(bool) {}
 void host_sound_preview_chime() {}
 void host_sound_preview_beep() {}
+bool host_sound_special() { return true; }
+void host_sound_set_special(bool) {}
+void host_sound_preview_special() {}
+void host_special_test(bool) {}
 int  host_chime_count() { return 1; }
 const char *host_chime_name(int) { return "Westminster"; }
 int  host_chime_index() { return 0; }

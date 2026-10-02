@@ -254,6 +254,52 @@ static void play_file(const char *path, bool sustained) {
     theme_sd::unlock();
 }
 
+
+// The special-aircraft sounds, synthesised like the beeps rather than recorded, so they cost
+// no flash and follow the volume exactly.
+//
+// A sonar ping: a struck tone that falls a little in pitch and rings away, with its own echo
+// coming back a quarter of a second later. On a radar screen that reads as "contact", not as
+// an alarm clock, which is the point: an A380 passing is something worth looking up for, not
+// something to jump at. Mixed into the buffer additively, so the echo overlaps the tail of
+// the ping the way a real one does.
+static void mix_ping(int16_t *buf, size_t frames, size_t at, float f0, float amp, float tauS) {
+    const size_t attack = SR / 250;                       // 4 ms
+    float phase = 0.0f;
+    for (size_t i = 0; at + i < frames; ++i) {
+        const float t = (float)i / SR;
+        const float env = (i < attack ? (float)i / attack : 1.0f) * expf(-t / tauS);
+        if (env < 0.002f && i > attack) break;
+        const float f = f0 * (1.0f - 0.07f * fminf(t / 0.4f, 1.0f));   // a slight downward glide
+        phase += 2.0f * (float)M_PI * f / SR;
+        // A touch of the octave gives it the hollow, metallic edge of a sonar ping.
+        const float s = amp * env * (sinf(phase) + 0.18f * sinf(2.0f * phase));
+        const size_t k = (at + i) * 2;
+        const int v = (int)buf[k] + (int)s;
+        const int16_t c = (int16_t)(v > 32767 ? 32767 : (v < -32768 ? -32768 : v));
+        buf[k] = c; buf[k + 1] = c;
+    }
+}
+
+// The emergency signal: three quick rising sweeps. A different shape from the ping on
+// purpose, so a 7700 is recognisable without looking: urgent, but short.
+static size_t gen_sweep(int16_t *buf, size_t cap, float f0, float f1, int ms, float amp) {
+    const size_t n = (size_t)((long)SR * ms / 1000);
+    const size_t fade = SR / 200;
+    float phase = 0.0f;
+    size_t i = 0;
+    for (; i < n && (i * 2 + 1) < cap; ++i) {
+        float env = 1.0f;
+        if (i < fade)          env = (float)i / fade;
+        else if (i > n - fade) env = (float)(n - i) / fade;
+        const float f = f0 + (f1 - f0) * (float)i / n;
+        phase += 2.0f * (float)M_PI * f / SR;
+        const int16_t s = (int16_t)(amp * env * sinf(phase));
+        buf[i * 2] = s; buf[i * 2 + 1] = s;
+    }
+    return i * 2;
+}
+
 static void play_cue(int cue) {
     const uint32_t myGen = s_gen;
     // Preview (4) and self-test (2) both ignore mute — they're a deliberate "let me hear
@@ -273,6 +319,26 @@ static void play_cue(int cue) {
             size_t ns = gen_beep(buf, S_BUF_LEN, 1320.0f, 80, amp);
             i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
             delay(40);
+        }
+    } else if (cue == AUDIO_SPECIAL) {
+        // Ping at once, echo at 230 ms, a fainter second echo after that.
+        const size_t frames = S_BUF_LEN / 2;
+        memset(buf, 0, S_BUF_LEN * sizeof(int16_t));
+        mix_ping(buf, frames, 0, 1250.0f, amp * 0.95f, 0.11f);
+        mix_ping(buf, frames, (size_t)(SR * 0.23f), 1250.0f, amp * 0.36f, 0.09f);
+        i2s_write(I2S_PORT, buf, S_BUF_LEN * sizeof(int16_t), &bw, portMAX_DELAY);
+        if (!superseded(myGen)) {
+            const size_t tail = frames * 3 / 5;            // 300 ms
+            memset(buf, 0, tail * 2 * sizeof(int16_t));
+            mix_ping(buf, tail, (size_t)(SR * 0.04f), 1250.0f, amp * 0.13f, 0.08f);
+            i2s_write(I2S_PORT, buf, tail * 2 * sizeof(int16_t), &bw, portMAX_DELAY);
+        }
+    } else if (cue == AUDIO_EMERGENCY) {
+        for (int k = 0; k < 3; ++k) {
+            if (superseded(myGen)) break;
+            size_t ns = gen_sweep(buf, S_BUF_LEN, 700.0f, 1500.0f, 170, amp);
+            i2s_write(I2S_PORT, buf, ns * 2, &bw, portMAX_DELAY);
+            delay(60);
         }
     } else if (cue == AUDIO_CHIME) {                // real recorded chime, whichever is selected
         const int idx = constrain(s_chimeIdx, 0, CHIME_COUNT - 1);

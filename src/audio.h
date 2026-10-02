@@ -11,6 +11,9 @@ enum AudioCue {
     AUDIO_ALERT = 1,   // emergency / military contact (urgent double beep)
     AUDIO_CHIME = 3,   // top-of-hour clock chime (gentle descending phrase)
     AUDIO_WIND  = 5,   // one detent of winding the clock's mainspring (a short dry tick)
+    // 6..9 are internal (theme PCM, SD file playback). Public cues continue from 10.
+    AUDIO_SPECIAL   = 10,   // a special aircraft: a sonar ping with its echo
+    AUDIO_EMERGENCY = 11,   // an emergency squawk: three quick rising sweeps
 };
 
 bool audio_begin();                 // init ES8311 + I2S + PA + playback task (call on core 1)

@@ -45,6 +45,9 @@ extern bool host_sound_chime();
 extern void host_sound_set_chime(bool on);
 extern void host_sound_preview_chime();
 extern void host_sound_preview_beep();
+extern bool host_sound_special();
+extern void host_sound_set_special(bool on);
+extern void host_sound_preview_special();
 extern int  host_chime_count();
 extern const char *host_chime_name(int idx);
 extern int  host_chime_index();
@@ -201,7 +204,7 @@ namespace {
     #define WHEEL_FADE     (chrome().wheelFade)
 
     // --- sound submenu ---
-    enum { SND_RADAR = 0, SND_CHIME, SND_CHIME_SEL, SND_VOLUME, SND_BACK, SND_COUNT };
+    enum { SND_RADAR = 0, SND_SPECIAL, SND_CHIME, SND_CHIME_SEL, SND_VOLUME, SND_BACK, SND_COUNT };
 
     constexpr int VOL_STEP = 10;
 
@@ -721,6 +724,8 @@ namespace {
         char b[28];
         snprintf(b, sizeof(b), "Radar sounds   %s", host_sound_radar() ? "ON" : "OFF");
         lv_label_set_text(s_sndItems[SND_RADAR], b);
+        snprintf(b, sizeof(b), "Special alert   %s", host_sound_special() ? "ON" : "OFF");
+        lv_label_set_text(s_sndItems[SND_SPECIAL], b);
         snprintf(b, sizeof(b), "Clock chime   %s", host_sound_chime() ? "ON" : "OFF");
         lv_label_set_text(s_sndItems[SND_CHIME], b);
         snprintf(b, sizeof(b), "Audio: %s", host_chime_name(host_chime_index()));
@@ -1614,6 +1619,11 @@ void settingsview::onPress() {
             host_sound_set_radar(on);
             refresh_sound();
             if (on) host_sound_preview_beep();
+        } else if (s_sndSel == SND_SPECIAL) {
+            const bool on = !host_sound_special();
+            host_sound_set_special(on);
+            refresh_sound();
+            if (on) host_sound_preview_special();          // hear what it will sound like
         } else if (s_sndSel == SND_CHIME) {
             const bool on = !host_sound_chime();
             host_sound_set_chime(on);

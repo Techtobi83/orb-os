@@ -109,6 +109,7 @@ static int                   g_volume = 60;                          // alert vo
 static bool                  g_muted  = false;                       // mute alert pings
 static int                   g_chimeIdx = 0;                         // selected chime (Settings/NVS)
 static bool                  g_soundRadar = false;                   // on-device: radar pings on/off
+static bool                  g_specialAlert = true;                  // Settings > Sound > Special alert
 static bool                  g_soundChime = false;                   // on-device: top-of-hour clock chime
 static int                   g_alertMode = 2;                        // 0=off 1=emergencies 2=new+emergencies (web/NVS)
 static float                 g_proximityKm = 0.0f;                   // proximity alert radius, km (0=off) (web/NVS)
@@ -714,6 +715,7 @@ static void loadSettings() {
     g_volume           = p.getInt("vol", 60);
     g_muted            = p.getBool("mute", false);
     g_soundRadar       = p.getBool("sndRadar", false);
+    g_specialAlert     = p.getBool("sndSpecial", true);
     g_soundChime       = p.getBool("sndChime", false);
     g_alertMode        = p.getInt("alertmode", 2);
     g_proximityKm      = p.getFloat("proxkm", 0.0f);
@@ -752,6 +754,141 @@ static void loadSettings() {
     radar::setLargeText(g_bigText);
 }
 
+
+// ----------------------------- special aircraft ----------------------------------------
+//
+// "Something worth looking up for": an emergency squawk, a military aircraft, a rare type,
+// a rescue helicopter, or anything passing low and close. Its own switch (Settings > Sound
+// > Special alert, on by default) and its own sounds, independent of the per-contact radar
+// pings, which most owners keep off because a busy sky makes them constant. Runs on every
+// screen, from the same snapshot hand-off as checkAudioEvents(), on the UI thread, so the
+// banner can be touched directly.
+// g_specialAlert (NVS "sndSpecial") is declared with the other sound settings at the top.
+
+struct SpecialType { const char *icao; const char *label; };
+// ICAO type designators. Short on purpose: each one should be a genuine "come and look".
+static const SpecialType SPECIAL_TYPES[] = {
+    { "A388", "Airbus A380" },  { "A124", "Antonov An-124" }, { "A225", "Antonov An-225" },
+    { "BLCF", "Dreamlifter" },  { "A3ST", "Airbus Beluga" },  { "A337", "Beluga XL" },
+    { "B741", "Boeing 747" },   { "B742", "Boeing 747" },     { "B743", "Boeing 747" },
+    { "B744", "Boeing 747" },   { "B748", "Boeing 747-8" },   { "B52",  "B-52" },
+    { "C5M",  "C-5 Galaxy" },   { "A400", "Airbus A400M" },   { "C17",  "C-17" },
+    { "U2",   "U-2" },          { "E3TF", "AWACS" },          { "E3CF", "AWACS" },
+};
+static constexpr float SPECIAL_LOW_FT = 2000.0f;    // a low pass: below this...
+static constexpr float SPECIAL_LOW_KM = 5.0f;       // ...and within this of home
+static constexpr uint32_t SPECIAL_REPEAT_MS = 30UL * 60UL * 1000UL;   // same aircraft again
+static constexpr uint32_t SPECIAL_SOUND_GAP_MS = 8000;                // between two sounds
+
+// Why this aircraft is special, or nullptr. `urgent` marks the emergencies, which get the
+// urgent sound. Order matters: an emergency outranks everything else it might also be.
+static const char *special_reason(const Aircraft &ac, double distKm, bool &urgent, char *buf, size_t n) {
+    urgent = false;
+    switch (ac.squawk) {
+        case 7700: urgent = true; return "EMERGENCY 7700";
+        case 7600: urgent = true; return "RADIO FAILURE 7600";
+        case 7500: urgent = true; return "HIJACK 7500";
+        default: break;
+    }
+    for (const SpecialType &t : SPECIAL_TYPES)
+        if (ac.type == t.icao) return t.label;
+    // Germany's air rescue flies as "Christoph nn", callsign CHXnn, whoever operates it.
+    if (ac.flight.startsWith("CHX")) return "Rescue helicopter";
+    if (ac.military) return "Military";
+    if (!ac.onGround && !isnan(ac.altBaro) && ac.altBaro > 0 && ac.altBaro < SPECIAL_LOW_FT
+        && distKm <= SPECIAL_LOW_KM) {
+        snprintf(buf, n, "Low pass %d ft", (int)ac.altBaro);
+        return buf;
+    }
+    return nullptr;
+}
+
+// The banner: one line across the top of whatever screen is up, for a few seconds. Bordered
+// in the theme's own sweep colour, so it belongs to the design it lands on.
+static lv_obj_t *g_spotBanner = nullptr;
+static lv_obj_t *g_spotLbl    = nullptr;
+static uint32_t  g_spotUntil  = 0;
+static constexpr uint32_t SPECIAL_BANNER_MS = 6000;
+
+static void special_banner_show(const char *text, bool urgent) {
+    if (!g_spotBanner) {
+        g_spotBanner = lv_obj_create(lv_layer_top());
+        lv_obj_remove_style_all(g_spotBanner);
+        lv_obj_set_size(g_spotBanner, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_color(g_spotBanner, lv_color_hex(0x14110D), 0);
+        lv_obj_set_style_bg_opa(g_spotBanner, LV_OPA_90, 0);
+        lv_obj_set_style_radius(g_spotBanner, 16, 0);
+        lv_obj_set_style_border_width(g_spotBanner, 2, 0);
+        lv_obj_set_style_pad_hor(g_spotBanner, 16, 0);
+        lv_obj_set_style_pad_ver(g_spotBanner, 8, 0);
+        lv_obj_clear_flag(g_spotBanner, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        g_spotLbl = lv_label_create(g_spotBanner);
+        lv_obj_set_style_text_font(g_spotLbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_color(g_spotLbl, lv_color_hex(0xF2F0EA), 0);
+        lv_obj_set_style_text_align(g_spotLbl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(g_spotLbl);
+    }
+    lv_obj_set_style_border_color(g_spotBanner,
+        urgent ? lv_color_hex(0xFF3B30) : lv_color_hex(theme_style::radar().sweepColor), 0);
+    lv_label_set_text(g_spotLbl, text);
+    lv_obj_align(g_spotBanner, LV_ALIGN_TOP_MID, 0, 64);
+    lv_obj_clear_flag(g_spotBanner, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(g_spotBanner);
+    g_spotUntil = millis() + SPECIAL_BANNER_MS;
+}
+
+static void special_banner_tick() {
+    if (g_spotBanner && g_spotUntil && (int32_t)(millis() - g_spotUntil) >= 0) {
+        lv_obj_add_flag(g_spotBanner, LV_OBJ_FLAG_HIDDEN);
+        g_spotUntil = 0;
+    }
+}
+
+static void checkSpecialAircraft() {
+    if (!g_specialAlert) return;
+    static std::map<std::string, uint32_t> s_alerted;    // hex -> when it was last announced
+    static uint32_t s_lastSound = 0;
+    const uint32_t now = millis();
+    for (auto it = s_alerted.begin(); it != s_alerted.end();) {          // forget the old ones
+        if (now - it->second > SPECIAL_REPEAT_MS) it = s_alerted.erase(it); else ++it;
+    }
+    for (const Aircraft &ac : g_snap) {
+        const double d = geo::haversineKm(g_settings.homeLat, g_settings.homeLon, ac.lat, ac.lon);
+        if (d > g_settings.rangeKm) continue;
+        const std::string hex = ac.hex.c_str();
+        if (s_alerted.count(hex)) continue;
+        bool urgent = false;
+        char tmp[32];
+        const char *why = special_reason(ac, d, urgent, tmp, sizeof(tmp));
+        if (!why) continue;
+        s_alerted[hex] = now;
+        char line[96];
+        const char *who = ac.flight.length() ? ac.flight.c_str() : ac.hex.c_str();
+        snprintf(line, sizeof(line), "%s\n%s  %.0f km", why, who, d);
+        Serial.printf("[special] %s %s (%s) %.1f km\n", who, why, ac.type.c_str(), d);
+        diag::log("special %s %s", who, why);
+        special_banner_show(line, urgent);
+        if (audio_present() && (urgent || now - s_lastSound > SPECIAL_SOUND_GAP_MS)) {
+            audio_play(urgent ? AUDIO_EMERGENCY : AUDIO_SPECIAL);
+            s_lastSound = now;
+        }
+    }
+}
+
+bool host_sound_special() { return g_specialAlert; }
+void host_sound_set_special(bool on) {
+    g_specialAlert = on;
+    Preferences p; p.begin("capsuleradar", false); p.putBool("sndSpecial", on); p.end();
+}
+void host_sound_preview_special() { if (audio_present()) audio_play(AUDIO_SPECIAL); }
+
+// ?orb special-test [urgent]: the banner and the sound without waiting for an A380, for
+// hearing what it is like and for checking a theme's colours against the banner.
+void host_special_test(bool urgent) {
+    special_banner_show(urgent ? "EMERGENCY 7700\nTEST  5 km" : "Airbus A380\nTEST  12 km", urgent);
+    if (audio_present()) audio_play(urgent ? AUDIO_EMERGENCY : AUDIO_SPECIAL);
+}
+
 // Audio alerts. g_alertMode: 0 = off, 1 = emergencies only, 2 = new aircraft + emergencies.
 // g_proximityKm > 0 also pings (once) when any aircraft crosses into that radius.
 static void checkAudioEvents() {
@@ -776,7 +913,9 @@ static void checkAudioEvents() {
 
         // new-in-range pings (on entry), gated by the alert mode
         if (isNew) {
-            if (emergency) { if (g_alertMode >= 1) audio_play(AUDIO_ALERT); }   // emergencies only / +new
+            // Emergencies and military belong to the special alert when that is on; the
+            // plain double beep stays for an Orb that has it switched off.
+            if (emergency) { if (g_alertMode >= 1 && !g_specialAlert) audio_play(AUDIO_ALERT); }
             else if (g_alertMode >= 2 && millis() - lastNew > 3000) {
                 audio_play(AUDIO_NEW);                                          // new contact (rate-limited)
                 lastNew = millis();
@@ -3626,6 +3765,7 @@ void loop() {
     // own. Returns immediately unless the wind screen is up.
     wind_notice::animate();
     update_hold_warning();          // countdown while the button is held (see build_hold_warning)
+    special_banner_tick();          // take the special-aircraft banner down when its time is up
     if (knob::takeLongPress()) {    // held ~8 s -> manual recovery reboot
         Serial.println("[main] knob long-press -> reboot");
         diag::log("knob long-press -> reboot (app %s)", app_shell::name());
@@ -3767,6 +3907,7 @@ void loop() {
             g_acDirty = false;         // g_aircraft now holds the previous snapshot (overwritten next poll)
             xSemaphoreGive(g_ac_mutex);
             checkAudioEvents();                // ping new-in-range / emergency / military, any screen
+            checkSpecialAircraft();            // the special-aircraft alert: banner + sound
             if (g_radarViewActive) {
                 // Timed because this is the one chunk of per-poll work that lands on the
                 // RENDER thread: everything else about a poll happens on core 0. If a poll

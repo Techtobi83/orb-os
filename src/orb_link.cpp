@@ -35,6 +35,7 @@ void host_factory_reset();                                                      
 int  host_wifi_scan_result(char names[][33], int8_t *rssi, bool *isOpen, int maxN);   // main.cpp
 void host_wifi_restore_saved();                   // main.cpp — put the backed-up network back
 int  host_wifi_known_names(char out[][33], int maxN);   // main.cpp — the last 3 joined, NAMES only
+void host_special_test(bool urgent);              // main.cpp — the special-aircraft banner + sound
 
 namespace orb_link {
 namespace {
@@ -892,6 +893,10 @@ void dispatch(char *line) {
     else if (!strcmp(line, "locreset"))  cmd_locreset();
     else if (!strcmp(line, "setloc"))    cmd_setloc(arg);
     else if (!strcmp(line, "wifisaved")) cmd_wifisaved();
+    else if (!strcmp(line, "special-test")) {
+        host_special_test(arg && *arg);
+        out_reset(); out_str("{\"ok\":true}"); out_send();
+    }
     else if (!strcmp(line, "wifirestore")) cmd_wifirestore();
     else if (!strcmp(line, "sweepms"))   cmd_sweepms(arg);
     else if (!strcmp(line, "interpms")) cmd_interpms(arg);
