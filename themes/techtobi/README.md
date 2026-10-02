@@ -1,6 +1,6 @@
-# TechTobi theme
+# Tagesring theme (folder: techtobi)
 
-An Orb theme folder, ready to copy to the SD card as `/themes/techtobi/`. Built by hand rather
+By TechTobi. An Orb theme folder, ready to copy to the SD card as `/themes/techtobi/`. Built by hand rather
 than in Orb Studio, because it uses firmware features Studio has no controls for yet:
 
 - `clock_style.json`: `"dayRing"`, `"dateDE"` and `"swing1"` (firmware 2.22.3 or later).
