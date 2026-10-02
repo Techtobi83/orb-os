@@ -19,6 +19,56 @@ relevant.
      proves nothing, but they are no longer displayed, because they are not this. When
      there are photographs of an Orb wearing a theme somebody designed, they go here. -->
 
+## This fork
+
+This is TechTobi's fork of Zion Brock's Orb firmware
+([Ziplock78/orb-firmware](https://github.com/Ziplock78/orb-firmware)), branched from
+**2.16.36**. Everything below "What it does" describes the Orb as Zion built it; this list
+is what the fork adds or changes on top. Each item is its own commit, so any of them can be
+taken or left on its own.
+
+**New and returning apps**
+- **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself.
+- **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
+- **Weather radar** is back in the build: rain only (no weak echoes), the full round display, 40 km, one frame every five minutes, with the town's name.
+- **News** is compiled out of this build (`NEWS_ENABLED 0`).
+
+**Getting around**
+- Swipe sideways on the glass to change app (Settings stays knob-only).
+- **Auto page**: moves to the next app after a chosen quiet time.
+- **Settings → Language**: English or German for Settings, app names, status lines, weather, the date and the dial; umlauts render everywhere (`src/lang.h`, `src/font_de_*.c`).
+- Place names read as the town only; the start screen holds for 5 s.
+
+**Flight tracker**
+- **Special aircraft alert**: emergency squawks, rare types (A380, An-124, Beluga, 747, B-52...), rescue helicopters, military and low passes get a sonar ping (or a siren for an emergency) and a banner. Settings → Sound → Special alert.
+- No feed polling while the tracker is off screen.
+- A failed route lookup is retried instead of being remembered as "no route".
+- Sweep trails fade in their own colour, not through green (RGB565 quantisation).
+
+**Clock**
+- A 24-hour day ring and a weekday/date window, for themes that ask for them.
+- A static clock layer can swing, for a balance wheel.
+- Fixed: the sweeping second hand could crash the Orb when leaving the clock.
+
+**WiFi**
+- Remembers the last **three** networks it joined and moves to the strongest one in range on its own.
+- Settings → WiFi can scan and join when the saved network is out of range, and a failed join says why (wrong password, network not found, no IP address...).
+
+**Comfort**
+- **Night mode** (Settings → Display): off, 22–07, or on; half brightness and no sound while active.
+
+**Weather map fixes**
+- No more noisy tiles and stray lines on entry; keep-out zones line up with the 466 px map.
+
+**For theme designers**
+- `livecam_plate.png` + `livecam_style.json` (`frameR`): the Livestream sits inside the theme's frame.
+- `<asset>_de.png`: a German version of any picture, chosen by Settings → Language.
+- Stock app names follow the language unless the theme names its apps.
+
+**The Tagesring theme** ([`themes/techtobi/`](themes/techtobi/), drawn by [`tools/theme_techtobi.py`](tools/theme_techtobi.py)): a chronometer dial with the day ring and a swinging balance wheel, an Iron Orbit start screen, amber menus and an amber flight tracker, and the same full-size frame on the weather map and the Livestream.
+
+**Over the cable** (`?orb ...`): `special-test`, `night`, `lang`, and `wifi` now lists the remembered networks.
+
 ## What it does
 
 Five screens, reached by rocking the knob to open the app menu and turning to choose:
