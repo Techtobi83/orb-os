@@ -80,6 +80,21 @@ taken or left on its own.
 
 **Over the cable** (`?orb ...`): `special-test`, `night`, `lang`, and `wifi` now lists the remembered networks.
 
+### Install this fork
+
+For an Orb built on the Waveshare ESP32-S3-Touch-AMOLED-1.75. You need a USB-C cable and Chrome or Edge on a computer; nothing to install.
+
+1. **Download** from the [latest release](https://github.com/Techtobi83/orb-os/releases/latest), under *Assets*: `orb-os-<version>-full.bin`, and if you want the theme, `theme-tagesring-techtobi.zip`.
+2. **Flash in the browser:** open Espressif's web flasher at <https://espressif.github.io/esptool-js/>, plug the Orb in, click **Connect** and pick its port. Set *Flash Address* to **`0x0`**, choose `orb-os-<version>-full.bin`, click **Program**, and wait a minute or two. The Orb restarts and asks for WiFi.
+3. **Theme (optional):** unzip onto the microSD card so it holds `/themes/techtobi/`, put the card in, and choose **Tagesring** under Settings → Theme. The first start after that takes about 15 s while the artwork is prepared.
+
+Good to know:
+- The full image **erases WiFi and settings**; set them up once afterwards.
+- **Updating later** without losing them: flash `orb-os-<version>-app.bin` at address **`0x10000`** instead.
+- From the command line instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 orb-os-<version>-full.bin`.
+- The Orb itself cannot update over WiFi in this build (that space holds theme art), so updates always go over USB.
+- **Do not update from Orb Studio**: its flasher would replace this fork with Zion's firmware. Flashing Zion's firmware the same way takes you back at any time.
+
 ## What it does
 
 Five screens, reached by rocking the knob to open the app menu and turning to choose:
