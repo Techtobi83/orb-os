@@ -152,14 +152,14 @@ namespace {
 // switch ticker_view.cpp uses, and unknown values land on a default rather than the closest.
 const lv_font_t *font_for_px(int px) {
     switch (px) {
-        case 14: return &lv_font_montserrat_14;
-        case 16: return &lv_font_montserrat_16;
-        case 18: return &lv_font_montserrat_18;
-        case 20: return &lv_font_montserrat_20;
-        case 22: return &lv_font_montserrat_22;
-        case 26: return &lv_font_montserrat_26;
-        case 28: return &lv_font_montserrat_28;
-        default: return &lv_font_montserrat_20;
+        case 14: return &font_de_14;
+        case 16: return &font_de_16;
+        case 18: return &font_de_18;
+        case 20: return &font_de_20;
+        case 22: return &font_de_22;
+        case 26: return &font_de_26;
+        case 28: return &font_de_28;
+        default: return &font_de_20;
     }
 }
 

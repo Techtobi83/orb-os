@@ -154,10 +154,12 @@ const uint16_t *custom_plate() {
             return s_plate;
         }
         uint8_t *o = nullptr;
+        char loc[48];
+        const char *plateName = theme_style::localized("clock_plate.png", loc, sizeof(loc));   // its German version, if any
 #if CUSTOM_HAS_PLATE
-        if (decode_sd_first("clock_plate.png", CUSTOM_PLATE_PNG, CUSTOM_PLATE_PNG_LEN, false, o, w, h, "plate")) s_plate = (uint16_t *)o;
+        if (decode_sd_first(plateName, CUSTOM_PLATE_PNG, CUSTOM_PLATE_PNG_LEN, false, o, w, h, "plate")) s_plate = (uint16_t *)o;
 #else
-        if (decode_sd_first("clock_plate.png", nullptr, 0, false, o, w, h, "plate")) s_plate = (uint16_t *)o;
+        if (decode_sd_first(plateName, nullptr, 0, false, o, w, h, "plate")) s_plate = (uint16_t *)o;
 #endif
     }
     return s_plate;

@@ -25,6 +25,7 @@
 // TJpgDec is one global object, shared with photo_client and cloud_image_client. Decoding
 // here happens on the LVGL thread, as Spy Cam's did.
 #include "livecam_view.h"
+#include "lang.h"
 #include "config.h"
 
 #if LIVECAM_ENABLED
@@ -519,12 +520,12 @@ namespace {
         char t[128];
         // Where to set it is on the screen itself: the person looking at this has no reason
         // to have read a README.
-        if (us == URL_NONE)         snprintf(t, sizeof(t), "NO STREAM SET\n\nSettings > Livestream\nor theorb.local/livestream");
-        else if (us == URL_BAD)     snprintf(t, sizeof(t), "THE STREAM URL MUST\nSTART WITH http://\n\nSettings > Livestream");
-        else if (st != ST_ERROR)    snprintf(t, sizeof(t), "CONNECTING...");
-        else if (err >= 100)        snprintf(t, sizeof(t), "NO SIGNAL\nHTTP %d", err);
-        else if (err == ERR_NO_WIFI) snprintf(t, sizeof(t), "NO SIGNAL\nno WiFi");
-        else                        snprintf(t, sizeof(t), "NO SIGNAL\nretrying (%d)", err);
+        if (us == URL_NONE)         snprintf(t, sizeof(t), tr("NO STREAM SET\n\nSettings > Livestream\nor theorb.local/livestream", "KEIN STREAM GESETZT\n\nEinstellungen > Livestream\noder theorb.local/livestream"));
+        else if (us == URL_BAD)     snprintf(t, sizeof(t), tr("THE STREAM URL MUST\nSTART WITH http://\n\nSettings > Livestream", "DIE STREAM-URL MUSS\nMIT http:// BEGINNEN\n\nEinstellungen > Livestream"));
+        else if (st != ST_ERROR)    snprintf(t, sizeof(t), tr("CONNECTING...", "VERBINDE..."));
+        else if (err >= 100)        snprintf(t, sizeof(t), tr("NO SIGNAL\nHTTP %d", "KEIN SIGNAL\nHTTP %d"), err);
+        else if (err == ERR_NO_WIFI) snprintf(t, sizeof(t), tr("NO SIGNAL\nno WiFi", "KEIN SIGNAL\nkein WLAN"));
+        else                        snprintf(t, sizeof(t), tr("NO SIGNAL\nretrying (%d)", "KEIN SIGNAL\nneuer Versuch (%d)"), err);
         lv_label_set_text(s_msg, t);
         lv_obj_clear_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     }
@@ -592,7 +593,7 @@ void livecamview::init(const char *url) {
     lv_label_set_text(s_msg, "");
     lv_obj_set_style_text_align(s_msg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_msg, lv_color_hex(0xB0B6BE), 0);
-    lv_obj_set_style_text_font(s_msg, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_msg, &font_de_16, 0);
     lv_obj_set_style_bg_color(s_msg, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_msg, 200, 0);
     lv_obj_set_style_pad_hor(s_msg, 10, 0);

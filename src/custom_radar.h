@@ -85,7 +85,7 @@ extern const lv_font_t custom_radar_font2;
 #define CUSTOM_RTEXT2_CURVE_R 0
 #define CUSTOM_RTEXT2_ARCDEG 0.00f
 #define CUSTOM_HAS_RTEXT3 1
-#define CUSTOM_RTEXT3_FONT (&lv_font_montserrat_20)
+#define CUSTOM_RTEXT3_FONT (&font_de_20)
 #define CUSTOM_RTEXT3_X 104
 #define CUSTOM_RTEXT3_Y 173
 #define CUSTOM_RTEXT3_COLOR 0xD9D3C1

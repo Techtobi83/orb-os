@@ -17,6 +17,7 @@
 #include "settings_sprite.h"    // settings_custom_plate()/settings_custom_overlay() — the editor's baked background / CRT+glass
 #include "settings_text.h"      // settings_text::draw_item() — the wheel's glow-capable text, shared by every list
 #include "theme_style.h"
+#include "lang.h"         // Settings > Language, and tr() for every word on these pages
 #include "theme_font.h"   // per-theme fonts, with the compiled font as fallback        // per-theme wheel geometry/colors/highlight/default-selection — the runtime half of custom_settings.h's macros
 
 // Shared with main.cpp.
@@ -83,16 +84,21 @@ namespace {
     enum Mode { MODE_MENU, MODE_DISPLAY, MODE_BRIGHT, MODE_LOCATION, MODE_RECENT, MODE_SEARCH, MODE_SOUND, MODE_VOLUME, MODE_ABOUT,
                 MODE_WIFI_LIST, MODE_WIFI_PASSWORD, MODE_WIFI_STATUS, MODE_RESET_CONFIRM, MODE_UNITS, MODE_CHIME_SELECT,
                 MODE_THEME_SELECT, MODE_THEME_NOTICE, MODE_DESIGN_SELECT, MODE_DESIGN_NOTICE, MODE_RANGE,
-                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL };
+                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL, MODE_LANGUAGE };
 
     // --- main settings menu ---
     // ITEM_RANGE was added when touch (and with it the on-screen zoom button) was
     // removed. Inserting mid-list shifts the numeric meaning of a theme's saved
     // "default selection", so an older theme may now open Settings on a neighbouring
     // item. Cosmetic only, and DEFAULT_SEL below still clamps anything out of range.
-    // ITEM_STREAM (the Livestream app's camera URL) was inserted after Range the same way.
-    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_STREAM, ITEM_WIFI, ITEM_DESIGN, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
-    const char *ITEM_LABELS[ITEM_COUNT] = { "Display", "Location", "Sound", "Units", "Range", "Livestream", "WiFi", "Theme", "About", "Reset", "Back" };
+    // ITEM_STREAM (the Livestream app's camera URL) was inserted after Range the same way,
+    // and ITEM_LANGUAGE after Theme.
+    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_STREAM, ITEM_WIFI, ITEM_DESIGN, ITEM_LANGUAGE, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
+    const char *ITEM_LABELS[ITEM_COUNT]    = { "Display", "Location", "Sound", "Units", "Range", "Livestream", "WiFi", "Theme", "Language", "About", "Reset", "Back" };
+    const char *ITEM_LABELS_DE[ITEM_COUNT] = { "Anzeige", "Standort", "Ton", "Einheiten", "Reichweite", "Livestream", "WLAN", "Design", "Sprache", "Info", "Zurücksetzen", "Zurück" };
+    // Settings > Language: each language named in itself, so whoever cannot read the current
+    // one can still find their own.
+    enum { LNG_EN = 0, LNG_DE, LNG_BACK, LNG_COUNT };
     // A Launch Kit push's "Default selection" (was editor-preview-only; now baked
     // in) — which item the main menu opens on, both at first boot and every time
     // the app switcher hands control back to Settings. Out-of-range (a stale
@@ -118,14 +124,17 @@ namespace {
     // stay compiled in as the fallback; only the control is gone. The main menu's Theme
     // entry, which switches between installed designs, is the real one.
     enum { DSP_SCREEN = 0, DSP_AUTO, DSP_NIGHT, DSP_BRIGHT, DSP_BACK, DSP_COUNT };
-    const char *NIGHT_LABELS[] = { "OFF", "22-07", "ON" };
+    const char *NIGHT_LABELS[]    = { "OFF", "22-07", "ON" };
+    const char *NIGHT_LABELS_DE[] = { "AUS", "22-07", "AN" };
     const uint32_t IDLE_MS[] = { 0, 28800000UL, 14400000UL, 7200000UL, 3600000UL, 1800000UL, 600000UL, 120000UL };
     const char *IDLE_LABELS[] = { "Always on", "8 hours", "4 hours", "2 hours", "1 hour", "30 min", "10 min", "2 min" };
+    const char *IDLE_LABELS_DE[] = { "Immer an", "8 Std.", "4 Std.", "2 Std.", "1 Std.", "30 Min.", "10 Min.", "2 Min." };
     const int IDLE_N = (int)(sizeof(IDLE_MS) / sizeof(IDLE_MS[0]));
     // Auto page: minutes left alone before the Orb moves to the next app (0 = off). The
     // values are the owner's; the labels are a table beside them, so the two cannot drift.
     const uint16_t AUTO_MIN[] = { 0, 5, 10, 15, 20, 30, 60 };
     const char *AUTO_LABELS[] = { "Off", "5 min", "10 min", "15 min", "20 min", "30 min", "60 min" };
+    const char *AUTO_LABELS_DE[] = { "Aus", "5 Min.", "10 Min.", "15 Min.", "20 Min.", "30 Min.", "60 Min." };
     const int AUTO_N = (int)(sizeof(AUTO_MIN) / sizeof(AUTO_MIN[0]));
     static_assert(sizeof(AUTO_LABELS) / sizeof(AUTO_LABELS[0]) == sizeof(AUTO_MIN) / sizeof(AUTO_MIN[0]),
                   "every Auto page value needs a label");
@@ -175,9 +184,9 @@ namespace {
     // me that notification now?" They stay on the setup path, where a stranger meets the
     // knob for the first time, and go with the theme everywhere else; the main wheel never
     // had either. Registered as they are built, shown or hidden in show_page().
-    lv_obj_t *s_hints[24] = { nullptr };
+    lv_obj_t *s_hints[32] = { nullptr };
     int       s_hintN = 0;
-    void reg_hint(lv_obj_t *h) { if (h && s_hintN < 24) s_hints[s_hintN++] = h; }
+    void reg_hint(lv_obj_t *h) { if (h && s_hintN < (int)(sizeof(s_hints) / sizeof(s_hints[0]))) s_hints[s_hintN++] = h; }
     const Chrome &chrome() {
         // Fixed, and deliberately the stock values rather than a copy of any theme's.
         static const Chrome SYSTEM = {
@@ -223,6 +232,7 @@ namespace {
     // --- location submenu ---
     enum { LM_CURRENT = 0, LM_SEARCH, LM_RECENT, LM_BACK, LM_COUNT };
     const char *LM_LABELS[LM_COUNT] = { "Current location", "Search city", "Recent cities", "Back" };
+    const char *LM_LABELS_DE[LM_COUNT] = { "Aktueller Standort", "Stadt suchen", "Letzte Städte", "Zurück" };
 
     // Seed the recents list once (first boot) so "Recent cities" isn't empty.
     struct City { const char *name; double lat; double lon; };
@@ -377,6 +387,11 @@ namespace {
     lv_obj_t *s_themeSelHl   = nullptr;
     lv_obj_t *s_themeSelItems[APP_THEME_COUNT + 1] = { nullptr };   // themes + Back
     lv_obj_t *s_themeNoticePage = nullptr;   // "restarting..." heads-up, shown right before the reboot
+    lv_obj_t *s_noticeMsg = nullptr;         // its text: theme, or language
+    lv_obj_t *s_langPage  = nullptr;         // Settings > Language
+    lv_obj_t *s_langHl    = nullptr;
+    lv_obj_t *s_langItems[LNG_COUNT] = { nullptr };
+    int       s_langSel   = 0;
     lv_obj_t *s_designPage = nullptr;   // design picker (top-level Design item)
     lv_obj_t *s_designHl   = nullptr;
     lv_obj_t *s_designItems[theme_select::MAX_THEMES + 1] = { nullptr };   // installed themes + Back
@@ -405,6 +420,10 @@ namespace {
     // pre-selected, so the default is still a single press.
     enum { FB_ONDEVICE = 0, FB_PHONE, FB_COUNT };
     const char *FB_LABELS[FB_COUNT] = { "Choose a network here", "Use my phone instead" };
+    const char *FB_LABELS_DE[FB_COUNT] = { "Netzwerk hier wählen", "Lieber mein Handy" };
+    // Pick the row text for the language the Orb booted in. The arrays are filled before
+    // setup() reads the language, so they cannot call tr() themselves.
+    inline const char *L(const char *const *en, const char *const *de, int i) { return lang::de() ? de[i] : en[i]; }
     lv_obj_t *s_fbPage  = nullptr;
     lv_obj_t *s_fbHl    = nullptr;
     lv_obj_t *s_fbItems[FB_COUNT] = { nullptr, nullptr };
@@ -615,9 +634,9 @@ namespace {
             // picker, and it came and went with whichever face the label held before.
             const int ad = abs(d);
             const lv_font_t *font;
-            if      (ad == 0) font = &lv_font_montserrat_20;
-            else if (ad == 1) font = &lv_font_montserrat_16;
-            else              font = &lv_font_montserrat_14;
+            if      (ad == 0) font = &font_de_20;
+            else if (ad == 1) font = &font_de_16;
+            else              font = &font_de_14;
             const Chrome &ch = chrome();
             const lv_font_t *labelFont = font;
 #if CUSTOM_HAS_SETTINGS
@@ -705,15 +724,15 @@ namespace {
     }
 
     void refresh_display() {
-        char b[28];
-        snprintf(b, sizeof(b), "Screen   %s", IDLE_LABELS[idle_index()]);
+        char b[40];
+        snprintf(b, sizeof(b), tr("Screen   %s", "Bildschirm   %s"), L(IDLE_LABELS, IDLE_LABELS_DE, idle_index()));
         lv_label_set_text(s_dspItems[DSP_SCREEN], b);
-        snprintf(b, sizeof(b), "Auto page   %s", AUTO_LABELS[auto_index()]);
+        snprintf(b, sizeof(b), tr("Auto page   %s", "Auto-Seite   %s"), L(AUTO_LABELS, AUTO_LABELS_DE, auto_index()));
         lv_label_set_text(s_dspItems[DSP_AUTO], b);
-        snprintf(b, sizeof(b), "Night mode   %s", NIGHT_LABELS[host_get_night_mode() % 3]);
+        snprintf(b, sizeof(b), tr("Night mode   %s", "Nachtmodus   %s"), L(NIGHT_LABELS, NIGHT_LABELS_DE, host_get_night_mode() % 3));
         lv_label_set_text(s_dspItems[DSP_NIGHT], b);
-        lv_label_set_text(s_dspItems[DSP_BRIGHT], "Brightness");
-        lv_label_set_text(s_dspItems[DSP_BACK], "Back");
+        lv_label_set_text(s_dspItems[DSP_BRIGHT], tr("Brightness", "Helligkeit"));
+        lv_label_set_text(s_dspItems[DSP_BACK], tr("Back", "Zurück"));
         wheel_layout(s_dspItems, DSP_COUNT, s_dspSel, s_dspHl);
     }
 
@@ -726,18 +745,18 @@ namespace {
     }
 
     void refresh_sound() {
-        char b[28];
-        snprintf(b, sizeof(b), "Radar sounds   %s", host_sound_radar() ? "ON" : "OFF");
+        char b[40];
+        snprintf(b, sizeof(b), tr("Radar sounds   %s", "Radartöne   %s"), host_sound_radar() ? tr("ON", "AN") : tr("OFF", "AUS"));
         lv_label_set_text(s_sndItems[SND_RADAR], b);
-        snprintf(b, sizeof(b), "Special alert   %s", host_sound_special() ? "ON" : "OFF");
+        snprintf(b, sizeof(b), tr("Special alert   %s", "Sonderalarm   %s"), host_sound_special() ? tr("ON", "AN") : tr("OFF", "AUS"));
         lv_label_set_text(s_sndItems[SND_SPECIAL], b);
-        snprintf(b, sizeof(b), "Clock chime   %s", host_sound_chime() ? "ON" : "OFF");
+        snprintf(b, sizeof(b), tr("Clock chime   %s", "Stundenschlag   %s"), host_sound_chime() ? tr("ON", "AN") : tr("OFF", "AUS"));
         lv_label_set_text(s_sndItems[SND_CHIME], b);
-        snprintf(b, sizeof(b), "Audio: %s", host_chime_name(host_chime_index()));
+        snprintf(b, sizeof(b), tr("Audio: %s", "Klang: %s"), host_chime_name(host_chime_index()));
         lv_label_set_text(s_sndItems[SND_CHIME_SEL], b);
-        snprintf(b, sizeof(b), "Volume   %d%%", host_get_volume());
+        snprintf(b, sizeof(b), tr("Volume   %d%%", "Lautstärke   %d%%"), host_get_volume());
         lv_label_set_text(s_sndItems[SND_VOLUME], b);
-        lv_label_set_text(s_sndItems[SND_BACK], "Back");
+        lv_label_set_text(s_sndItems[SND_BACK], tr("Back", "Zurück"));
         wheel_layout(s_sndItems, SND_COUNT, s_sndSel, s_sndHl);
     }
 
@@ -757,7 +776,7 @@ namespace {
         const int n = chime_shown();
         for (int i = 0; i < n; ++i)
             lv_label_set_text(s_chimeSelItems[i], host_chime_name(i));
-        lv_label_set_text(s_chimeSelItems[n], "Back");
+        lv_label_set_text(s_chimeSelItems[n], tr("Back", "Zurück"));
         wheel_layout(s_chimeSelItems, chime_item_count(), s_chimeSel, s_chimeSelHl);
     }
 
@@ -766,7 +785,7 @@ namespace {
     void refresh_themeSelect() {
         for (int i = 0; i < APP_THEME_COUNT; ++i)
             lv_label_set_text(s_themeSelItems[i], app_theme::name(i));
-        lv_label_set_text(s_themeSelItems[APP_THEME_COUNT], "Back");
+        lv_label_set_text(s_themeSelItems[APP_THEME_COUNT], tr("Back", "Zurück"));
         wheel_layout(s_themeSelItems, APP_THEME_COUNT + 1, s_themeSel, s_themeSelHl);
     }
 
@@ -810,28 +829,35 @@ namespace {
                 lv_label_set_text(s_designItems[i], label);
             }
         }
-        lv_label_set_text(s_designItems[s_designCount], "Back");
+        lv_label_set_text(s_designItems[s_designCount], tr("Back", "Zurück"));
         for (int i = s_designCount + 1; i < theme_select::MAX_THEMES + 1; ++i) lv_label_set_text(s_designItems[i], "");
         if (s_designSel > s_designCount) s_designSel = s_designCount;
         wheel_layout(s_designItems, design_item_count(), s_designSel, s_designHl);
+    }
+
+    void refresh_language() {
+        lv_label_set_text(s_langItems[LNG_EN], "English");
+        lv_label_set_text(s_langItems[LNG_DE], "Deutsch");
+        lv_label_set_text(s_langItems[LNG_BACK], tr("Back", "Zurück"));
+        wheel_layout(s_langItems, LNG_COUNT, s_langSel, s_langHl);
     }
 
     void refresh_units() {
         const int mode = host_wx_units_mode();
         const char *resolved = host_wx_is_imperial() ? "F, mi" : "C, km";
         char b[36];
-        if (mode == 0) snprintf(b, sizeof(b), "Units   Auto (%s)", resolved);
-        else           snprintf(b, sizeof(b), "Units   %s", mode == 2 ? "Imperial (F, mi)" : "Metric (C, km)");
+        if (mode == 0) snprintf(b, sizeof(b), tr("Units   Auto (%s)", "Einheiten   Auto (%s)"), resolved);
+        else           snprintf(b, sizeof(b), tr("Units   %s", "Einheiten   %s"), mode == 2 ? "Imperial (F, mi)" : tr("Metric (C, km)", "Metrisch (C, km)"));
         lv_label_set_text(s_unitsItems[UNIT_MODE], b);
-        lv_label_set_text(s_unitsItems[UNIT_BACK], "Back");
+        lv_label_set_text(s_unitsItems[UNIT_BACK], tr("Back", "Zurück"));
         wheel_layout(s_unitsItems, UNIT_COUNT, s_unitsSel, s_unitsHl);
     }
 
     void refresh_range() {
         char b[36];
-        snprintf(b, sizeof(b), "Range   %.0f km", (double)host_get_range_km());
+        snprintf(b, sizeof(b), tr("Range   %.0f km", "Reichweite   %.0f km"), (double)host_get_range_km());
         lv_label_set_text(s_rangeItems[RNG_VALUE], b);
-        lv_label_set_text(s_rangeItems[RNG_BACK], "Back");
+        lv_label_set_text(s_rangeItems[RNG_BACK], tr("Back", "Zurück"));
         wheel_layout(s_rangeItems, RNG_COUNT, s_rangeSel, s_rangeHl);
     }
 
@@ -847,7 +873,7 @@ namespace {
         // answer without selecting anything. This is the receipt for CUT-18 - the location
         // you set is the location it uses - and it used to be legible only on the splash,
         // for three seconds, at the bottom of a crowded dial.
-        if (s_lmCoords) lv_label_set_text(s_lmCoords, s_homeCoords[0] ? s_homeCoords : "location not set");
+        if (s_lmCoords) lv_label_set_text(s_lmCoords, s_homeCoords[0] ? s_homeCoords : tr("location not set", "Standort nicht gesetzt"));
         // Hidden rather than blank when nothing has named this position: an Orb given bare
         // coordinates over the cable genuinely does not know, and an empty line in the
         // primary ink reads as something failing to load.
@@ -873,7 +899,7 @@ namespace {
         for (int i = 0; i < FB_COUNT; ++i) {
             const bool sel = (i == s_fbSel);
             lv_obj_align(s_fbItems[i], LV_ALIGN_CENTER, 0, i == 0 ? FB_ROW1_Y : FB_ROW2_Y);
-            lv_obj_set_style_text_font(s_fbItems[i], &lv_font_montserrat_26, 0);
+            lv_obj_set_style_text_font(s_fbItems[i], &font_de_26, 0);
             lv_obj_set_style_text_color(s_fbItems[i], sel ? C_WHITE : C_GREY, 0);
             lv_obj_set_style_text_opa(s_fbItems[i], LV_OPA_COVER, 0);
         }
@@ -884,7 +910,7 @@ namespace {
         lv_coord_t wid = 0;
         for (int i = 0; i < FB_COUNT; ++i) {
             lv_point_t sz;
-            lv_txt_get_size(&sz, FB_LABELS[i], &lv_font_montserrat_26,
+            lv_txt_get_size(&sz, L(FB_LABELS, FB_LABELS_DE, i), &font_de_26,
                             0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
             if (sz.x > wid) wid = sz.x;
         }
@@ -894,14 +920,14 @@ namespace {
 
     void refresh_recent() {
         if (s_recCount == 0) {
-            lv_label_set_text(s_recName, "No recent cities");
-            lv_label_set_text(s_recCoord, "search to add one");
+            lv_label_set_text(s_recName, tr("No recent cities", "Keine letzten Städte"));
+            lv_label_set_text(s_recCoord, tr("search to add one", "per Suche hinzufügen"));
         } else if (s_recSel < s_recCount) {
             lv_label_set_text(s_recName, s_recNames[s_recSel]);
             char b[32]; snprintf(b, sizeof(b), "%.2f, %.2f", s_recLat[s_recSel], s_recLon[s_recSel]);
             lv_label_set_text(s_recCoord, b);
         } else {
-            lv_label_set_text(s_recName, "Back");
+            lv_label_set_text(s_recName, tr("Back", "Zurück"));
             lv_label_set_text(s_recCoord, "");
         }
     }
@@ -912,7 +938,7 @@ namespace {
     }
 
     void refresh_search() {
-        lv_label_set_text(s_srchText, s_str[0] ? s_str : "type a city name");
+        lv_label_set_text(s_srchText, s_str[0] ? s_str : tr("type a city name", "Stadtnamen eingeben"));
         const bool inKeys = (s_kbIdx < N_KEYS);
         const int  center = inKeys ? s_kbIdx : N_KEYS - 1;
         for (int k = 0; k < 7; ++k) {
@@ -922,10 +948,10 @@ namespace {
             lv_label_set_text(s_strip[k], c);
             const bool hot = inKeys && (k == 3);
             lv_obj_set_style_text_color(s_strip[k], hot ? C_WHITE : C_GREY, 0);
-            lv_obj_set_style_text_font(s_strip[k], hot ? &lv_font_montserrat_28 : &lv_font_montserrat_20, 0);
+            lv_obj_set_style_text_font(s_strip[k], hot ? &font_de_28 : &font_de_20, 0);
         }
         if (s_searching) {
-            lv_label_set_text(s_sug[0], "searching...");
+            lv_label_set_text(s_sug[0], tr("searching...", "suche..."));
             lv_obj_set_style_text_color(s_sug[0], C_GREY, 0);
             for (int j = 1; j < 4; ++j) lv_label_set_text(s_sug[j], "");
         } else {
@@ -1034,6 +1060,7 @@ namespace {
         lv_obj_add_flag(s_dspPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_themeSelPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_themeNoticePage, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_langPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designNoticePage, LV_OBJ_FLAG_HIDDEN);
         if (m == MODE_MENU)          { lv_obj_clear_flag(s_menu, LV_OBJ_FLAG_HIDDEN);    refresh_menu(); }
@@ -1044,6 +1071,7 @@ namespace {
         else if (m == MODE_SOUND)    { lv_obj_clear_flag(s_sndPage, LV_OBJ_FLAG_HIDDEN); refresh_sound(); }
         else if (m == MODE_CHIME_SELECT) { lv_obj_clear_flag(s_chimeSelPage, LV_OBJ_FLAG_HIDDEN); refresh_chimeSelect(); }
         else if (m == MODE_UNITS)    { lv_obj_clear_flag(s_unitsPage, LV_OBJ_FLAG_HIDDEN); refresh_units(); }
+        else if (m == MODE_LANGUAGE) { lv_obj_clear_flag(s_langPage, LV_OBJ_FLAG_HIDDEN); refresh_language(); }
         else if (m == MODE_RANGE)    { lv_obj_clear_flag(s_rangePage, LV_OBJ_FLAG_HIDDEN); refresh_range(); }
         else if (m == MODE_VOLUME)   { lv_obj_clear_flag(s_volPage, LV_OBJ_FLAG_HIDDEN); refresh_vol(); }
         else if (m == MODE_ABOUT)    { lv_obj_clear_flag(s_aboutPage, LV_OBJ_FLAG_HIDDEN); refresh_about(); }
@@ -1087,15 +1115,15 @@ namespace {
 
     void wifi_item_name(int idx, char *out, size_t n) {
         if (idx < s_wifiCount)       snprintf(out, n, "%s", s_wifiNames[idx]);
-        else if (idx == s_wifiCount) snprintf(out, n, "Rescan");
-        else                         snprintf(out, n, "Back");
+        else if (idx == s_wifiCount) snprintf(out, n, tr("Rescan", "Neu suchen"));
+        else                         snprintf(out, n, tr("Back", "Zurück"));
     }
 
     void refresh_wifi_list() {
         if (s_wifiScanning) {
             lv_obj_add_flag(s_wifiHl, LV_OBJ_FLAG_HIDDEN);
             for (int r = 0; r < WIFI_VISIBLE; ++r) lv_label_set_text(s_wifiRows[r], "");
-            lv_label_set_text(s_wifiRows[WIFI_VISIBLE / 2], "Scanning...");
+            lv_label_set_text(s_wifiRows[WIFI_VISIBLE / 2], tr("Scanning...", "Suche..."));
             lv_obj_set_style_text_color(s_wifiRows[WIFI_VISIBLE / 2], C_DIM, 0);
             lv_label_set_text(s_wifiListHint, "");
             return;
@@ -1129,8 +1157,8 @@ namespace {
         const int hlRow = s_wifiSel - top;
         lv_obj_clear_flag(s_wifiHl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_align(s_wifiHl, LV_ALIGN_CENTER, 0, -(WIFI_VISIBLE - 1) * WIFI_ROW_DY / 2 + hlRow * WIFI_ROW_DY);
-        lv_label_set_text(s_wifiListHint, s_firstBootPrompt ? "Start by connecting to your local Wi-Fi"
-                                                             : "turn to choose, push to select");
+        lv_label_set_text(s_wifiListHint, s_firstBootPrompt ? tr("Start by connecting to your local Wi-Fi", "Verbinde den Orb zuerst mit deinem WLAN")
+                                                             : tr("turn to choose, push to select", "drehen zum Wählen, drücken zum Öffnen"));
     }
 
     void refresh_key_strip();
@@ -1138,24 +1166,24 @@ namespace {
     void refresh_wifi_pass() {
         lv_label_set_long_mode(s_passText, LV_LABEL_LONG_DOT);   // the URL page wraps it
         lv_obj_align(s_passText, LV_ALIGN_CENTER, 0, -70);
-        lv_label_set_text(s_wifiPassHint, "turn to a key, push to enter it\nOK connects, Back returns");
-        lv_label_set_text(s_passText, s_pass[0] ? s_pass : "(enter password)");
-        lv_obj_set_style_text_font(s_passText, &lv_font_montserrat_26, 0);   // reading back what you typed matters
+        lv_label_set_text(s_wifiPassHint, tr("turn to a key, push to enter it\nOK connects, Back returns", "zur Taste drehen, drücken zum Eingeben\nOK verbindet, Zurück bricht ab"));
+        lv_label_set_text(s_passText, s_pass[0] ? s_pass : tr("(enter password)", "(Passwort eingeben)"));
+        lv_obj_set_style_text_font(s_passText, &font_de_26, 0);   // reading back what you typed matters
         refresh_key_strip();
     }
 
     void refresh_stream_url() {
-        lv_label_set_text(s_wifiPassTitle, "Livestream URL");
-        lv_label_set_text(s_wifiPassHint, "push adds the key, DEL removes the last\nOK saves, Back keeps the old URL");
+        lv_label_set_text(s_wifiPassTitle, tr("Livestream URL", "Livestream-URL"));
+        lv_label_set_text(s_wifiPassHint, tr("push adds the key, DEL removes the last\nOK saves, Back keeps the old URL", "drücken fügt hinzu, DEL löscht\nOK speichert, Zurück behält die alte URL"));
         // A URL is long and every character of it matters, so it wraps rather than being
         // cut with dots, and only its tail is shown once it outgrows three lines: typing
         // happens at the end, so the end is what has to be visible.
         lv_label_set_long_mode(s_passText, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_font(s_passText, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_font(s_passText, &font_de_18, 0);
         lv_obj_align(s_passText, LV_ALIGN_CENTER, 0, -62);
         constexpr size_t SHOW = 72;
         const size_t L = strlen(s_url);
-        if (!L)            lv_label_set_text(s_passText, "(enter the stream URL)");
+        if (!L)            lv_label_set_text(s_passText, tr("(enter the stream URL)", "(Stream-URL eingeben)"));
         else if (L > SHOW) lv_label_set_text_fmt(s_passText, "...%s", s_url + (L - SHOW));
         else               lv_label_set_text(s_passText, s_url);
         refresh_key_strip();
@@ -1169,7 +1197,7 @@ namespace {
             if (idx < 0 || idx >= WK_TOTAL) c[0] = 0;
             else if (idx == WK_DEL) snprintf(c, sizeof(c), "DEL");
             else if (idx == WK_OK)  snprintf(c, sizeof(c), "OK");
-            else if (idx == WK_BACK) snprintf(c, sizeof(c), "Back");
+            else if (idx == WK_BACK) snprintf(c, sizeof(c), tr("Back", "Zurück"));
             else if (WKEYS[idx] == ' ') snprintf(c, sizeof(c), "SP");   // show space as "SP"
             else { c[0] = WKEYS[idx]; c[1] = 0; }
             lv_label_set_text(s_wkStrip[k], c);
@@ -1178,7 +1206,7 @@ namespace {
             // never showing the whole set and fewer visible at once costs nothing. Somebody
             // is picking one character at a time, so the one they are on is the only one
             // that has to be truly readable, and it was the same size as its neighbours.
-            lv_obj_set_style_text_font(s_wkStrip[k], hot ? &lv_font_montserrat_44 : &lv_font_montserrat_22, 0);
+            lv_obj_set_style_text_font(s_wkStrip[k], hot ? &font_de_44 : &font_de_22, 0);
         }
         // Position from MEASURED widths, not a fixed pitch.
         //
@@ -1197,7 +1225,7 @@ namespace {
             for (int k = 0; k < 7; ++k) {
                 lv_point_t sz;
                 lv_txt_get_size(&sz, lv_label_get_text(s_wkStrip[k]),
-                                (k == 3) ? &lv_font_montserrat_44 : &lv_font_montserrat_22,
+                                (k == 3) ? &font_de_44 : &font_de_22,
                                 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
                 w[k] = sz.x;
             }
@@ -1231,7 +1259,7 @@ namespace {
         s_connectStartMs = lv_tick_get();   // lv_tick_get, not millis: this file also builds for the desktop simulator
         // s_firstBootPrompt stays set through to the connect result — wifi_tick() uses it
         // to decide whether to auto-locate on success (see there).
-        lv_label_set_text_fmt(s_wifiStatusLbl, "Connecting to\n%s...", s_wifiSelSsid);
+        lv_label_set_text_fmt(s_wifiStatusLbl, tr("Connecting to\n%s...", "Verbinde mit\n%s..."), s_wifiSelSsid);
         lv_label_set_text(s_wifiStatusHint, "");
         host_wifi_connect(s_wifiSelSsid, pass);
         show_page(MODE_WIFI_STATUS);
@@ -1245,7 +1273,7 @@ namespace {
             wifi_begin_connect("");
         } else {
             s_pass[0] = 0; s_wkbIdx = 0;
-            lv_label_set_text_fmt(s_wifiPassTitle, "Password: %s", s_wifiSelSsid);
+            lv_label_set_text_fmt(s_wifiPassTitle, tr("Password: %s", "Passwort: %s"), s_wifiSelSsid);
             refresh_wifi_pass();
             show_page(MODE_WIFI_PASSWORD);
         }
@@ -1287,30 +1315,30 @@ namespace {
                 // untouched, so every path that reaches the failure branch below leaves the
                 // owner exactly where they started. See host_wifi_connect() in main.cpp.
                 host_wifi_commit_credentials(s_wifiSelSsid, s_pass);
-                lv_label_set_text(s_wifiStatusLbl, "Connected!");
+                lv_label_set_text(s_wifiStatusLbl, tr("Connected!", "Verbunden!"));
                 if (s_firstBootPrompt) {
                     // First-time setup (fresh out of the box, or right after a Reset):
                     // auto-detect location from the IP instead of making them go set it
                     // manually. host_locate_current() reboots on success and never
                     // returns; it only returns (false) if the lookup itself failed, in
                     // which case fall back to a plain reboot so this doesn't just hang.
-                    lv_label_set_text(s_wifiStatusHint, "finding your location...");
+                    lv_label_set_text(s_wifiStatusHint, tr("finding your location...", "suche deinen Standort..."));
                     lv_refr_now(NULL);
                     if (!host_locate_current()) {
-                        lv_label_set_text(s_wifiStatusHint, "restarting...");
+                        lv_label_set_text(s_wifiStatusHint, tr("restarting...", "starte neu..."));
                         host_wifi_connected_reboot();
                     }
                 } else {
-                    lv_label_set_text(s_wifiStatusHint, "restarting...");
+                    lv_label_set_text(s_wifiStatusHint, tr("restarting...", "starte neu..."));
                     host_wifi_connected_reboot();
                 }
             } else {
                 // Which thing failed, from the driver's own reason: a password the network
                 // refused is one of several, and blaming it for all of them sent the owner
                 // round in circles with a password that was right.
-                lv_label_set_text_fmt(s_wifiStatusLbl, "Couldn't connect to\n%s.\n%s", s_wifiSelSsid,
+                lv_label_set_text_fmt(s_wifiStatusLbl, tr("Couldn't connect to\n%s.\n%s", "Keine Verbindung zu\n%s.\n%s"), s_wifiSelSsid,
                                       host_wifi_failure_text());
-                lv_label_set_text(s_wifiStatusHint, "push to go back");
+                lv_label_set_text(s_wifiStatusHint, tr("push to go back", "drücken für zurück"));
             }
         }
     }
@@ -1361,6 +1389,11 @@ void settingsview::onTurn(int delta) {
         if (s_chimeSel >= total) s_chimeSel = total - 1;
         refresh_chimeSelect();
         if (s_chimeSel < chime_shown()) host_chime_preview(s_chimeSel);   // hear it as you browse
+    } else if (s_mode == MODE_LANGUAGE) {
+        s_langSel += step;
+        if (s_langSel < 0) s_langSel = 0;
+        if (s_langSel >= LNG_COUNT) s_langSel = LNG_COUNT - 1;
+        refresh_language();
     } else if (s_mode == MODE_UNITS) {
         s_unitsSel += step;
         if (s_unitsSel < 0) s_unitsSel = 0;
@@ -1501,6 +1534,7 @@ void settingsview::onPress() {
         else if (s_sel == ITEM_LOCATION) { s_lmSel = 0; show_page(MODE_LOCATION); }
         else if (s_sel == ITEM_SOUND) { s_sndSel = 0; show_page(MODE_SOUND); }
         else if (s_sel == ITEM_UNITS) { s_unitsSel = 0; show_page(MODE_UNITS); }
+        else if (s_sel == ITEM_LANGUAGE) { s_langSel = lang::get(); show_page(MODE_LANGUAGE); }
         else if (s_sel == ITEM_RANGE) { s_rangeSel = 0; show_page(MODE_RANGE); }
         else if (s_sel == ITEM_STREAM) {
             host_livestream_url_get(s_url, sizeof(s_url));
@@ -1594,6 +1628,17 @@ void settingsview::onPress() {
         }
     } else if (s_mode == MODE_WIFI_STATUS) {
         if (!s_wifiConnecting) show_page(MODE_WIFI_LIST);   // ignore while actively connecting
+    } else if (s_mode == MODE_LANGUAGE) {
+        if (s_langSel < LNG_BACK && s_langSel != lang::get()) {
+            // In the language being chosen: it is the one the person can read.
+            lv_label_set_text(s_noticeMsg, s_langSel == LNG_DE ? "Der Orb startet jetzt\nauf Deutsch neu."
+                                                               : "The Orb will now\nrestart in English.");
+            show_page(MODE_THEME_NOTICE);
+            lv_refr_now(NULL);           // the notice onto the panel before the restart below
+            lang::set(s_langSel);        // restarts on the device; never returns there
+        }
+        app_shell::setCaptured(false);   // back always exits to the switcher, not one level up
+        app_shell::openSwitcher();
     } else if (s_mode == MODE_UNITS) {
         if (s_unitsSel == UNIT_MODE) {
             host_wx_units_set((host_wx_units_mode() + 1) % 3);   // Auto -> Metric -> Imperial -> Auto
@@ -1681,10 +1726,10 @@ void settingsview::onPress() {
         app_shell::openSwitcher();
     } else if (s_mode == MODE_LOCATION) {
         if (s_lmSel == LM_CURRENT) {
-            lv_label_set_text(s_lmItems[LM_CURRENT], "Locating...");
+            lv_label_set_text(s_lmItems[LM_CURRENT], tr("Locating...", "Orte..."));
             lv_refr_now(NULL);
             host_locate_current();                      // reboots on success
-            lv_label_set_text(s_lmItems[LM_CURRENT], LM_LABELS[LM_CURRENT]);  // came back = failed
+            lv_label_set_text(s_lmItems[LM_CURRENT], L(LM_LABELS, LM_LABELS_DE, LM_CURRENT));  // came back = failed
         } else if (s_lmSel == LM_SEARCH) {
             s_str[0] = 0; s_kbIdx = 0; s_sugCount = 0; s_pending = false; s_searching = false;
             show_page(MODE_SEARCH);
@@ -1764,7 +1809,7 @@ void settingsview::init() {
 
     for (int i = 0; i < ITEM_COUNT; ++i) {
         s_items[i] = lv_label_create(s_menu);
-        lv_label_set_text(s_items[i], ITEM_LABELS[i]);
+        lv_label_set_text(s_items[i], L(ITEM_LABELS, ITEM_LABELS_DE, i));
         // Font, opacity, and position are all set dynamically in refresh_menu() —
         // they depend on distance from the current selection (the wheel effect).
     }
@@ -1774,9 +1819,9 @@ void settingsview::init() {
     lv_obj_set_size(s_bright, SCREEN_W, SCREEN_H); lv_obj_center(s_bright);
     lv_obj_clear_flag(s_bright, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *blabel = lv_label_create(s_bright);
-    lv_label_set_text(blabel, "Brightness");
+    lv_label_set_text(blabel, tr("Brightness", "Helligkeit"));
     lv_obj_set_style_text_color(blabel, C_WHITE, 0);
-    lv_obj_set_style_text_font(blabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(blabel, &font_de_20, 0);
     lv_obj_align(blabel, LV_ALIGN_CENTER, 0, -70);
     lv_obj_t *track = lv_obj_create(s_bright);
     lv_obj_remove_style_all(track);
@@ -1796,12 +1841,12 @@ void settingsview::init() {
     s_pct = lv_label_create(s_bright);
     lv_label_set_text(s_pct, "--%");
     lv_obj_set_style_text_color(s_pct, C_WHITE, 0);
-    lv_obj_set_style_text_font(s_pct, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_pct, &font_de_20, 0);
     lv_obj_align(s_pct, LV_ALIGN_CENTER, 0, 50);
     lv_obj_t *bhint = lv_label_create(s_bright);
-    lv_label_set_text(bhint, "turn to adjust, push to save");
+    lv_label_set_text(bhint, tr("turn to adjust, push to save", "drehen zum Einstellen, drücken zum Speichern"));
     lv_obj_set_style_text_color(bhint, C_GREY, 0);
-    lv_obj_set_style_text_font(bhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(bhint, &font_de_14, 0);
     lv_obj_align(bhint, LV_ALIGN_CENTER, 0, 110);
     reg_hint(bhint);
 
@@ -1811,9 +1856,9 @@ void settingsview::init() {
     lv_obj_set_size(s_lmPage, SCREEN_W, SCREEN_H); lv_obj_center(s_lmPage);
     lv_obj_clear_flag(s_lmPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *lmtitle = lv_label_create(s_lmPage);
-    lv_label_set_text(lmtitle, "Location");
+    lv_label_set_text(lmtitle, tr("Location", "Standort"));
     lv_obj_set_style_text_color(lmtitle, C_DIM, 0);
-    lv_obj_set_style_text_font(lmtitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(lmtitle, &font_de_16, 0);
     // Lifted from -122 to make room for the place's name underneath it. The name is the
     // line somebody actually came here to read; the coordinates below stay exactly where
     // they have always been, because the wheel's upper rows pass through that band and the
@@ -1825,7 +1870,7 @@ void settingsview::init() {
     s_lmCity = lv_label_create(s_lmPage);
     lv_label_set_text(s_lmCity, "");
     lv_obj_set_style_text_color(s_lmCity, C_WHITE, 0);
-    lv_obj_set_style_text_font(s_lmCity, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(s_lmCity, &font_de_18, 0);
     lv_obj_set_style_text_align(s_lmCity, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_lmCity, LV_ALIGN_CENTER, 0, -122);
     // Directly under the title and above the wheel, in the dim ink the other secondary
@@ -1833,20 +1878,20 @@ void settingsview::init() {
     s_lmCoords = lv_label_create(s_lmPage);
     lv_label_set_text(s_lmCoords, "");
     lv_obj_set_style_text_color(s_lmCoords, C_GREY, 0);
-    lv_obj_set_style_text_font(s_lmCoords, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_lmCoords, &font_de_14, 0);
     lv_obj_set_style_text_align(s_lmCoords, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_lmCoords, LV_ALIGN_CENTER, 0, -100);
     s_lmHl = lv_obj_create(s_lmPage);
     style_highlight(s_lmHl);
     for (int i = 0; i < LM_COUNT; ++i) {
         s_lmItems[i] = lv_label_create(s_lmPage);
-        lv_label_set_text(s_lmItems[i], LM_LABELS[i]);
+        lv_label_set_text(s_lmItems[i], L(LM_LABELS, LM_LABELS_DE, i));
         // Font, opacity, position: wheel_layout(), called from refresh_locmenu().
     }
     lv_obj_t *lmhint = lv_label_create(s_lmPage);
-    lv_label_set_text(lmhint, "turn to choose, push to select");
+    lv_label_set_text(lmhint, tr("turn to choose, push to select", "drehen zum Wählen, drücken zum Öffnen"));
     lv_obj_set_style_text_color(lmhint, C_GREY, 0);
-    lv_obj_set_style_text_font(lmhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lmhint, &font_de_14, 0);
     lv_obj_align(lmhint, LV_ALIGN_CENTER, 0, 150);
     reg_hint(lmhint);
 
@@ -1864,23 +1909,23 @@ void settingsview::init() {
     lv_obj_set_style_bg_opa(s_fbPage, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_fbPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *fbTitle = lv_label_create(s_fbPage);
-    lv_label_set_text(fbTitle, "The Orb needs WiFi");
+    lv_label_set_text(fbTitle, tr("The Orb needs WiFi", "Der Orb braucht WLAN"));
     lv_obj_set_style_text_color(fbTitle, lv_color_white(), 0);
-    lv_obj_set_style_text_font(fbTitle, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(fbTitle, &font_de_28, 0);
     lv_obj_align(fbTitle, LV_ALIGN_CENTER, 0, -146);
     // Load-bearing, not decoration. The S3 has no 5 GHz radio, so a 5 GHz-only network
     // never appears in the scan at all — and before this line the screen offered no reason
     // why, leaving a stranger looking at a list with their own network missing from it.
     lv_obj_t *fbBand = lv_label_create(s_fbPage);
-    lv_label_set_text(fbBand, "2.4 GHz only");
+    lv_label_set_text(fbBand, tr("2.4 GHz only", "nur 2,4 GHz"));
     lv_obj_set_style_text_color(fbBand, C_DIM, 0);
-    lv_obj_set_style_text_font(fbBand, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(fbBand, &font_de_20, 0);
     lv_obj_align(fbBand, LV_ALIGN_CENTER, 0, -108);
     s_fbHl = lv_obj_create(s_fbPage);
     style_highlight(s_fbHl);
     for (int i = 0; i < FB_COUNT; ++i) {
         s_fbItems[i] = lv_label_create(s_fbPage);
-        lv_label_set_text(s_fbItems[i], FB_LABELS[i]);
+        lv_label_set_text(s_fbItems[i], L(FB_LABELS, FB_LABELS_DE, i));
         // Font, opacity, position: wheel_layout(), called from refresh_firstboot().
     }
     // A sixth line, and the one addition to the agreed copy. This is the only screen whose
@@ -1889,15 +1934,15 @@ void settingsview::init() {
     // "OR", so the two read as alternatives rather than a sequence. Dim and small: it is
     // punctuation between the choices, not a third thing to choose.
     lv_obj_t *fbOr = lv_label_create(s_fbPage);
-    lv_label_set_text(fbOr, "OR");
+    lv_label_set_text(fbOr, tr("OR", "ODER"));
     lv_obj_set_style_text_color(fbOr, C_GREY, 0);
-    lv_obj_set_style_text_font(fbOr, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(fbOr, &font_de_18, 0);
     lv_obj_align(fbOr, LV_ALIGN_CENTER, 0, 4);
 
     lv_obj_t *fbHint = lv_label_create(s_fbPage);
-    lv_label_set_text(fbHint, "turn to choose, push to select");
+    lv_label_set_text(fbHint, tr("turn to choose, push to select", "drehen zum Wählen, drücken zum Öffnen"));
     lv_obj_set_style_text_color(fbHint, C_GREY, 0);
-    lv_obj_set_style_text_font(fbHint, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(fbHint, &font_de_18, 0);
     lv_obj_align(fbHint, LV_ALIGN_CENTER, 0, 150);
     reg_hint(fbHint);
 
@@ -1913,31 +1958,31 @@ void settingsview::init() {
     lv_obj_set_style_bg_opa(s_fbPhonePage, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_fbPhonePage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *fpLead = lv_label_create(s_fbPhonePage);
-    lv_label_set_text(fpLead, "On your phone, join");
+    lv_label_set_text(fpLead, tr("On your phone, join", "Verbinde dein Handy mit"));
     lv_obj_set_style_text_color(fpLead, C_DIM, 0);
-    lv_obj_set_style_text_font(fpLead, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(fpLead, &font_de_20, 0);
     lv_obj_align(fpLead, LV_ALIGN_CENTER, 0, -78);
     // The network name is the one thing on this screen a person has to copy correctly, so
     // it is the one thing set larger than everything around it.
     lv_obj_t *fpSsid = lv_label_create(s_fbPhonePage);
     lv_label_set_text(fpSsid, "The Orb Setup");
     lv_obj_set_style_text_color(fpSsid, lv_color_white(), 0);
-    lv_obj_set_style_text_font(fpSsid, &lv_font_montserrat_36, 0);
+    lv_obj_set_style_text_font(fpSsid, &font_de_36, 0);
     lv_obj_align(fpSsid, LV_ALIGN_CENTER, 0, -36);
     lv_obj_t *fpL1 = lv_label_create(s_fbPhonePage);
-    lv_label_set_text(fpL1, "A page opens by itself.");
+    lv_label_set_text(fpL1, tr("A page opens by itself.", "Eine Seite öffnet sich von selbst."));
     lv_obj_set_style_text_color(fpL1, lv_color_white(), 0);
-    lv_obj_set_style_text_font(fpL1, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(fpL1, &font_de_22, 0);
     lv_obj_align(fpL1, LV_ALIGN_CENTER, 0, 24);
     lv_obj_t *fpL2 = lv_label_create(s_fbPhonePage);
-    lv_label_set_text(fpL2, "Pick your network there.");
+    lv_label_set_text(fpL2, tr("Pick your network there.", "Wähle dort dein Netzwerk."));
     lv_obj_set_style_text_color(fpL2, lv_color_white(), 0);
-    lv_obj_set_style_text_font(fpL2, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(fpL2, &font_de_22, 0);
     lv_obj_align(fpL2, LV_ALIGN_CENTER, 0, 52);
     lv_obj_t *fpBack = lv_label_create(s_fbPhonePage);
-    lv_label_set_text(fpBack, LV_SYMBOL_LEFT "  Back");
+    lv_label_set_text(fpBack, tr(LV_SYMBOL_LEFT "  Back", LV_SYMBOL_LEFT "  Zurück"));
     lv_obj_set_style_text_color(fpBack, C_GREY, 0);
-    lv_obj_set_style_text_font(fpBack, &lv_font_montserrat_26, 0);
+    lv_obj_set_style_text_font(fpBack, &font_de_26, 0);
     lv_obj_align(fpBack, LV_ALIGN_CENTER, 0, 120);
 
     // --- no readable SD card ---
@@ -1950,27 +1995,27 @@ void settingsview::init() {
     lv_obj_t *sdTitle = lv_label_create(s_noSdPage);
     // The same voice as "The Orb needs WiFi", on purpose: these are the two things it can
     // be missing, and a person who meets both should not have to learn two tones.
-    lv_label_set_text(sdTitle, "The Orb needs\nan SD card");
+    lv_label_set_text(sdTitle, tr("The Orb needs\nan SD card", "Der Orb braucht\neine SD-Karte"));
     lv_obj_set_style_text_color(sdTitle, lv_color_white(), 0);
-    lv_obj_set_style_text_font(sdTitle, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(sdTitle, &font_de_28, 0);
     lv_obj_set_style_text_align(sdTitle, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(sdTitle, LV_ALIGN_CENTER, 0, -60);
     // Why, in one line. UX-006: nothing on screen is unexplained. Without this the notice
     // is a demand with no reason attached, which is the shape of an error code in words.
     lv_obj_t *sdWhy = lv_label_create(s_noSdPage);
-    lv_label_set_text(sdWhy, "Designs live on the card.");
+    lv_label_set_text(sdWhy, tr("Designs live on the card.", "Designs liegen auf der Karte."));
     lv_obj_set_style_text_color(sdWhy, C_DIM, 0);
-    lv_obj_set_style_text_font(sdWhy, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(sdWhy, &font_de_20, 0);
     lv_obj_align(sdWhy, LV_ALIGN_CENTER, 0, 16);
     lv_obj_t *sdHow = lv_label_create(s_noSdPage);
-    lv_label_set_text(sdHow, "Insert one and restart.");
+    lv_label_set_text(sdHow, tr("Insert one and restart.", "Karte einlegen, neu starten."));
     lv_obj_set_style_text_color(sdHow, lv_color_white(), 0);
-    lv_obj_set_style_text_font(sdHow, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_font(sdHow, &font_de_22, 0);
     lv_obj_align(sdHow, LV_ALIGN_CENTER, 0, 46);
     lv_obj_t *sdHint = lv_label_create(s_noSdPage);
-    lv_label_set_text(sdHint, "push to carry on without one");
+    lv_label_set_text(sdHint, tr("push to carry on without one", "drücken, um ohne weiterzumachen"));
     lv_obj_set_style_text_color(sdHint, C_GREY, 0);
-    lv_obj_set_style_text_font(sdHint, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(sdHint, &font_de_18, 0);
     lv_obj_align(sdHint, LV_ALIGN_CENTER, 0, 130);
 
     // --- recent cities page (single-item scroller) ---
@@ -1979,25 +2024,25 @@ void settingsview::init() {
     lv_obj_set_size(s_recPage, SCREEN_W, SCREEN_H); lv_obj_center(s_recPage);
     lv_obj_clear_flag(s_recPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *rtitle = lv_label_create(s_recPage);
-    lv_label_set_text(rtitle, "Recent cities");
+    lv_label_set_text(rtitle, tr("Recent cities", "Letzte Städte"));
     lv_obj_set_style_text_color(rtitle, C_DIM, 0);
-    lv_obj_set_style_text_font(rtitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(rtitle, &font_de_16, 0);
     lv_obj_align(rtitle, LV_ALIGN_CENTER, 0, -70);
     reg_hint(rtitle);
     s_recName = lv_label_create(s_recPage);
     lv_label_set_text(s_recName, "");
     lv_obj_set_style_text_color(s_recName, C_WHITE, 0);
-    lv_obj_set_style_text_font(s_recName, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_recName, &font_de_20, 0);
     lv_obj_align(s_recName, LV_ALIGN_CENTER, 0, -14);
     s_recCoord = lv_label_create(s_recPage);
     lv_label_set_text(s_recCoord, "");
     lv_obj_set_style_text_color(s_recCoord, C_GREY, 0);
-    lv_obj_set_style_text_font(s_recCoord, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_recCoord, &font_de_14, 0);
     lv_obj_align(s_recCoord, LV_ALIGN_CENTER, 0, 20);
     lv_obj_t *rhint = lv_label_create(s_recPage);
-    lv_label_set_text(rhint, "turn to choose, push to set");
+    lv_label_set_text(rhint, tr("turn to choose, push to set", "drehen zum Wählen, drücken zum Setzen"));
     lv_obj_set_style_text_color(rhint, C_GREY, 0);
-    lv_obj_set_style_text_font(rhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(rhint, &font_de_14, 0);
     lv_obj_align(rhint, LV_ALIGN_CENTER, 0, 110);
     reg_hint(rhint);
 
@@ -2007,28 +2052,28 @@ void settingsview::init() {
     lv_obj_set_size(s_srchPage, SCREEN_W, SCREEN_H); lv_obj_center(s_srchPage);
     lv_obj_clear_flag(s_srchPage, LV_OBJ_FLAG_SCROLLABLE);
     s_srchText = lv_label_create(s_srchPage);
-    lv_label_set_text(s_srchText, "type a city name");
+    lv_label_set_text(s_srchText, tr("type a city name", "Stadtnamen eingeben"));
     lv_obj_set_style_text_color(s_srchText, C_WHITE, 0);
-    lv_obj_set_style_text_font(s_srchText, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_srchText, &font_de_20, 0);
     lv_obj_align(s_srchText, LV_ALIGN_CENTER, 0, -135);
     for (int k = 0; k < 7; ++k) {
         s_strip[k] = lv_label_create(s_srchPage);
         lv_label_set_text(s_strip[k], "");
         lv_obj_set_style_text_color(s_strip[k], C_GREY, 0);
-        lv_obj_set_style_text_font(s_strip[k], &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(s_strip[k], &font_de_20, 0);
         lv_obj_align(s_strip[k], LV_ALIGN_CENTER, (k - 3) * 48, -75);
     }
     for (int j = 0; j < 4; ++j) {
         s_sug[j] = lv_label_create(s_srchPage);
         lv_label_set_text(s_sug[j], "");
         lv_obj_set_style_text_color(s_sug[j], C_DIM, 0);
-        lv_obj_set_style_text_font(s_sug[j], &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(s_sug[j], &font_de_16, 0);
         lv_obj_align(s_sug[j], LV_ALIGN_CENTER, 0, -5 + j * 34);
     }
     lv_obj_t *shint = lv_label_create(s_srchPage);
-    lv_label_set_text(shint, "turn to letters then cities");
+    lv_label_set_text(shint, tr("turn to letters then cities", "drehen: erst Buchstaben, dann Städte"));
     lv_obj_set_style_text_color(shint, C_GREY, 0);
-    lv_obj_set_style_text_font(shint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(shint, &font_de_14, 0);
     lv_obj_align(shint, LV_ALIGN_CENTER, 0, 150);
 
     // --- display menu page (Screen timeout / Brightness / Back) ---
@@ -2038,9 +2083,9 @@ void settingsview::init() {
     lv_obj_clear_flag(s_dspPage, LV_OBJ_FLAG_SCROLLABLE);
     {
         lv_obj_t *dtitle = lv_label_create(s_dspPage);
-        lv_label_set_text(dtitle, "Display");
+        lv_label_set_text(dtitle, tr("Display", "Anzeige"));
         lv_obj_set_style_text_color(dtitle, C_DIM, 0);
-        lv_obj_set_style_text_font(dtitle, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(dtitle, &font_de_16, 0);
         lv_obj_align(dtitle, LV_ALIGN_CENTER, 0, -110);
         reg_hint(dtitle);
         s_dspHl = lv_obj_create(s_dspPage);
@@ -2051,9 +2096,9 @@ void settingsview::init() {
             // Font, opacity, position: wheel_layout(), called from refresh_display().
         }
         lv_obj_t *dhint = lv_label_create(s_dspPage);
-        lv_label_set_text(dhint, "turn to choose, push to select");
+        lv_label_set_text(dhint, tr("turn to choose, push to select", "drehen zum Wählen, drücken zum Öffnen"));
         lv_obj_set_style_text_color(dhint, C_GREY, 0);
-        lv_obj_set_style_text_font(dhint, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(dhint, &font_de_14, 0);
         lv_obj_align(dhint, LV_ALIGN_CENTER, 0, 150);
         reg_hint(dhint);
     }
@@ -2064,9 +2109,9 @@ void settingsview::init() {
     lv_obj_set_size(s_sndPage, SCREEN_W, SCREEN_H); lv_obj_center(s_sndPage);
     lv_obj_clear_flag(s_sndPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *sndtitle = lv_label_create(s_sndPage);
-    lv_label_set_text(sndtitle, "Sound");
+    lv_label_set_text(sndtitle, tr("Sound", "Ton"));
     lv_obj_set_style_text_color(sndtitle, C_DIM, 0);
-    lv_obj_set_style_text_font(sndtitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(sndtitle, &font_de_16, 0);
     lv_obj_align(sndtitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(sndtitle);
     s_sndHl = lv_obj_create(s_sndPage);
@@ -2077,9 +2122,9 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_sound().
     }
     lv_obj_t *sndhint = lv_label_create(s_sndPage);
-    lv_label_set_text(sndhint, "turn to choose, push to toggle");
+    lv_label_set_text(sndhint, tr("turn to choose, push to toggle", "drehen zum Wählen, drücken zum Umschalten"));
     lv_obj_set_style_text_color(sndhint, C_GREY, 0);
-    lv_obj_set_style_text_font(sndhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(sndhint, &font_de_14, 0);
     lv_obj_align(sndhint, LV_ALIGN_CENTER, 0, 150);
 
     // --- chime picker page (Sound > Chime sound) ---
@@ -2088,9 +2133,9 @@ void settingsview::init() {
     lv_obj_set_size(s_chimeSelPage, SCREEN_W, SCREEN_H); lv_obj_center(s_chimeSelPage);
     lv_obj_clear_flag(s_chimeSelPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *chimetitle = lv_label_create(s_chimeSelPage);
-    lv_label_set_text(chimetitle, "Chime sound");
+    lv_label_set_text(chimetitle, tr("Chime sound", "Klang"));
     lv_obj_set_style_text_color(chimetitle, C_DIM, 0);
-    lv_obj_set_style_text_font(chimetitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(chimetitle, &font_de_16, 0);
     lv_obj_align(chimetitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(chimetitle);
     s_chimeSelHl = lv_obj_create(s_chimeSelPage);
@@ -2101,9 +2146,9 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_chimeSelect().
     }
     lv_obj_t *chimehint = lv_label_create(s_chimeSelPage);
-    lv_label_set_text(chimehint, "turn to preview, push to select");
+    lv_label_set_text(chimehint, tr("turn to preview, push to select", "drehen zum Anhören, drücken zum Wählen"));
     lv_obj_set_style_text_color(chimehint, C_GREY, 0);
-    lv_obj_set_style_text_font(chimehint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(chimehint, &font_de_14, 0);
     lv_obj_align(chimehint, LV_ALIGN_CENTER, 0, 150);
     reg_hint(chimehint);
 
@@ -2113,9 +2158,9 @@ void settingsview::init() {
     lv_obj_set_size(s_themeSelPage, SCREEN_W, SCREEN_H); lv_obj_center(s_themeSelPage);
     lv_obj_clear_flag(s_themeSelPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *themetitle = lv_label_create(s_themeSelPage);
-    lv_label_set_text(themetitle, "Theme");
+    lv_label_set_text(themetitle, tr("Theme", "Design"));
     lv_obj_set_style_text_color(themetitle, C_DIM, 0);
-    lv_obj_set_style_text_font(themetitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(themetitle, &font_de_16, 0);
     lv_obj_align(themetitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(themetitle);
     s_themeSelHl = lv_obj_create(s_themeSelPage);
@@ -2126,9 +2171,9 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_themeSelect().
     }
     lv_obj_t *themehint = lv_label_create(s_themeSelPage);
-    lv_label_set_text(themehint, "turn to browse, push to select");
+    lv_label_set_text(themehint, tr("turn to browse, push to select", "drehen zum Blättern, drücken zum Wählen"));
     lv_obj_set_style_text_color(themehint, C_GREY, 0);
-    lv_obj_set_style_text_font(themehint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(themehint, &font_de_14, 0);
     lv_obj_align(themehint, LV_ALIGN_CENTER, 0, 150);
     reg_hint(themehint);
 
@@ -2142,10 +2187,11 @@ void settingsview::init() {
     lv_obj_set_style_bg_opa(s_themeNoticePage, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_themeNoticePage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *noticeMsg = lv_label_create(s_themeNoticePage);
-    lv_label_set_text(noticeMsg, "The Orb will now\nrestart under the\nnew theme.");
+    s_noticeMsg = noticeMsg;
+    lv_label_set_text(noticeMsg, tr("The Orb will now\nrestart under the\nnew theme.", "Der Orb startet jetzt\nmit dem neuen\nDesign neu."));
     lv_obj_set_style_text_align(noticeMsg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(noticeMsg, C_WHITE, 0);
-    lv_obj_set_style_text_font(noticeMsg, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(noticeMsg, &font_de_20, 0);
     lv_obj_center(noticeMsg);
 
     // --- design picker page (top-level Design item) — same shape as the theme
@@ -2156,9 +2202,9 @@ void settingsview::init() {
     lv_obj_set_size(s_designPage, SCREEN_W, SCREEN_H); lv_obj_center(s_designPage);
     lv_obj_clear_flag(s_designPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *designtitle = lv_label_create(s_designPage);
-    lv_label_set_text(designtitle, "Theme");
+    lv_label_set_text(designtitle, tr("Theme", "Design"));
     lv_obj_set_style_text_color(designtitle, C_DIM, 0);
-    lv_obj_set_style_text_font(designtitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(designtitle, &font_de_16, 0);
     lv_obj_align(designtitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(designtitle);
     s_designHl = lv_obj_create(s_designPage);
@@ -2169,9 +2215,9 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_designSelect().
     }
     lv_obj_t *designhint = lv_label_create(s_designPage);
-    lv_label_set_text(designhint, "turn to browse, push to select");
+    lv_label_set_text(designhint, tr("turn to browse, push to select", "drehen zum Blättern, drücken zum Wählen"));
     lv_obj_set_style_text_color(designhint, C_GREY, 0);
-    lv_obj_set_style_text_font(designhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(designhint, &font_de_14, 0);
     lv_obj_align(designhint, LV_ALIGN_CENTER, 0, 150);
     reg_hint(designhint);
 
@@ -2185,10 +2231,10 @@ void settingsview::init() {
     lv_obj_set_style_bg_opa(s_designNoticePage, LV_OPA_COVER, 0);
     lv_obj_clear_flag(s_designNoticePage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *designNoticeMsg = lv_label_create(s_designNoticePage);
-    lv_label_set_text(designNoticeMsg, "The Orb will now\nrestart under the\nnew design.");
+    lv_label_set_text(designNoticeMsg, tr("The Orb will now\nrestart under the\nnew design.", "Der Orb startet jetzt\nmit dem neuen\nDesign neu."));
     lv_obj_set_style_text_align(designNoticeMsg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(designNoticeMsg, C_WHITE, 0);
-    lv_obj_set_style_text_font(designNoticeMsg, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(designNoticeMsg, &font_de_20, 0);
     lv_obj_center(designNoticeMsg);
 
     // --- range menu page (Flight Tracker display range cycle / Back) ---
@@ -2197,9 +2243,9 @@ void settingsview::init() {
     lv_obj_set_size(s_rangePage, SCREEN_W, SCREEN_H); lv_obj_center(s_rangePage);
     lv_obj_clear_flag(s_rangePage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *rangetitle = lv_label_create(s_rangePage);
-    lv_label_set_text(rangetitle, "Range");
+    lv_label_set_text(rangetitle, tr("Range", "Reichweite"));
     lv_obj_set_style_text_color(rangetitle, C_DIM, 0);
-    lv_obj_set_style_text_font(rangetitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(rangetitle, &font_de_16, 0);
     lv_obj_align(rangetitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(rangetitle);
     s_rangeHl = lv_obj_create(s_rangePage);
@@ -2210,10 +2256,28 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_range().
     }
     lv_obj_t *rangehint = lv_label_create(s_rangePage);
-    lv_label_set_text(rangehint, "push to cycle how far the scope sees");
+    lv_label_set_text(rangehint, tr("push to cycle how far the scope sees", "drücken: wie weit das Radar sieht"));
     lv_obj_set_style_text_color(rangehint, C_GREY, 0);
-    lv_obj_set_style_text_font(rangehint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(rangehint, &font_de_14, 0);
     lv_obj_align(rangehint, LV_ALIGN_CENTER, 0, 122);
+
+    // --- language page (English / Deutsch / Back) ---
+    s_langPage = lv_obj_create(s_screen);
+    lv_obj_remove_style_all(s_langPage);
+    lv_obj_set_size(s_langPage, SCREEN_W, SCREEN_H); lv_obj_center(s_langPage);
+    lv_obj_clear_flag(s_langPage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *langtitle = lv_label_create(s_langPage);
+    lv_label_set_text(langtitle, "Language / Sprache");
+    lv_obj_set_style_text_color(langtitle, C_DIM, 0);
+    lv_obj_set_style_text_font(langtitle, &font_de_16, 0);
+    lv_obj_align(langtitle, LV_ALIGN_CENTER, 0, -122);
+    reg_hint(langtitle);
+    s_langHl = lv_obj_create(s_langPage);
+    style_highlight(s_langHl);
+    for (int i = 0; i < LNG_COUNT; ++i) {
+        s_langItems[i] = lv_label_create(s_langPage);
+        lv_label_set_text(s_langItems[i], "");
+    }
 
     // --- units menu page (Auto/Metric/Imperial cycle / Back) ---
     s_unitsPage = lv_obj_create(s_screen);
@@ -2221,9 +2285,9 @@ void settingsview::init() {
     lv_obj_set_size(s_unitsPage, SCREEN_W, SCREEN_H); lv_obj_center(s_unitsPage);
     lv_obj_clear_flag(s_unitsPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *unitstitle = lv_label_create(s_unitsPage);
-    lv_label_set_text(unitstitle, "Units");
+    lv_label_set_text(unitstitle, tr("Units", "Einheiten"));
     lv_obj_set_style_text_color(unitstitle, C_DIM, 0);
-    lv_obj_set_style_text_font(unitstitle, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(unitstitle, &font_de_16, 0);
     lv_obj_align(unitstitle, LV_ALIGN_CENTER, 0, -122);
     reg_hint(unitstitle);
     s_unitsHl = lv_obj_create(s_unitsPage);
@@ -2234,9 +2298,9 @@ void settingsview::init() {
         // Font, opacity, position: wheel_layout(), called from refresh_units().
     }
     lv_obj_t *unitshint = lv_label_create(s_unitsPage);
-    lv_label_set_text(unitshint, "push to cycle Auto / Metric / Imperial");
+    lv_label_set_text(unitshint, tr("push to cycle Auto / Metric / Imperial", "drücken: Auto / Metrisch / Imperial"));
     lv_obj_set_style_text_color(unitshint, C_GREY, 0);
-    lv_obj_set_style_text_font(unitshint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(unitshint, &font_de_14, 0);
     lv_obj_align(unitshint, LV_ALIGN_CENTER, 0, 150);
 
     // --- volume page ---
@@ -2245,9 +2309,9 @@ void settingsview::init() {
     lv_obj_set_size(s_volPage, SCREEN_W, SCREEN_H); lv_obj_center(s_volPage);
     lv_obj_clear_flag(s_volPage, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_t *vlabel = lv_label_create(s_volPage);
-    lv_label_set_text(vlabel, "Volume");
+    lv_label_set_text(vlabel, tr("Volume", "Lautstärke"));
     lv_obj_set_style_text_color(vlabel, C_WHITE, 0);
-    lv_obj_set_style_text_font(vlabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(vlabel, &font_de_20, 0);
     lv_obj_align(vlabel, LV_ALIGN_CENTER, 0, -70);
     lv_obj_t *vtrack = lv_obj_create(s_volPage);
     lv_obj_remove_style_all(vtrack);
@@ -2267,12 +2331,12 @@ void settingsview::init() {
     s_volPct = lv_label_create(s_volPage);
     lv_label_set_text(s_volPct, "--%");
     lv_obj_set_style_text_color(s_volPct, C_WHITE, 0);
-    lv_obj_set_style_text_font(s_volPct, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_volPct, &font_de_20, 0);
     lv_obj_align(s_volPct, LV_ALIGN_CENTER, 0, 50);
     lv_obj_t *vhint = lv_label_create(s_volPage);
-    lv_label_set_text(vhint, "turn to adjust, push to test");
+    lv_label_set_text(vhint, tr("turn to adjust, push to test", "drehen zum Einstellen, drücken zum Testen"));
     lv_obj_set_style_text_color(vhint, C_GREY, 0);
-    lv_obj_set_style_text_font(vhint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(vhint, &font_de_14, 0);
     lv_obj_align(vhint, LV_ALIGN_CENTER, 0, 110);
 
     // --- About page: the boot splash image, push anywhere to return ---
@@ -2308,16 +2372,16 @@ void settingsview::init() {
     lv_obj_clear_flag(s_resetPage, LV_OBJ_FLAG_SCROLLABLE);
     {
         lv_obj_t *warn = lv_label_create(s_resetPage);
-        lv_label_set_text(warn, "This erases Wi-Fi and\nall saved settings.");
+        lv_label_set_text(warn, tr("This erases Wi-Fi and\nall saved settings.", "Das löscht das WLAN und\nalle Einstellungen."));
         lv_obj_set_style_text_color(warn, lv_color_white(), 0);
-        lv_obj_set_style_text_font(warn, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(warn, &font_de_20, 0);
         lv_obj_set_style_text_align(warn, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(warn, LV_ALIGN_CENTER, 0, -30);
 
         lv_obj_t *action = lv_label_create(s_resetPage);
-        lv_label_set_text(action, "push to confirm\nturn to cancel");
+        lv_label_set_text(action, tr("push to confirm\nturn to cancel", "drücken zum Bestätigen\ndrehen zum Abbrechen"));
         lv_obj_set_style_text_color(action, lv_color_hex(0xFFB2B2), 0);
-        lv_obj_set_style_text_font(action, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(action, &font_de_16, 0);
         lv_obj_set_style_text_align(action, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(action, LV_ALIGN_CENTER, 0, 40);
     }
@@ -2333,9 +2397,9 @@ void settingsview::init() {
     lv_obj_clear_flag(s_wifiListPage, LV_OBJ_FLAG_SCROLLABLE);
     {
         lv_obj_t *wtitle = lv_label_create(s_wifiListPage);
-        lv_label_set_text(wtitle, "WiFi");
+        lv_label_set_text(wtitle, tr("WiFi", "WLAN"));
         lv_obj_set_style_text_color(wtitle, C_DIM, 0);
-        lv_obj_set_style_text_font(wtitle, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(wtitle, &font_de_20, 0);
         lv_obj_align(wtitle, LV_ALIGN_CENTER, 0, -122);   // below the persistent "SETTINGS" header
 
         s_wifiHl = lv_obj_create(s_wifiListPage);
@@ -2350,7 +2414,7 @@ void settingsview::init() {
             lv_label_set_long_mode(s_wifiRows[r], LV_LABEL_LONG_DOT);
             lv_obj_set_width(s_wifiRows[r], 300);
             lv_obj_set_style_text_align(s_wifiRows[r], LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_set_style_text_font(s_wifiRows[r], &lv_font_montserrat_26, 0);
+            lv_obj_set_style_text_font(s_wifiRows[r], &font_de_26, 0);
             // Only the selected row ever scrolls (set per-refresh below), so a resting
             // screen stays still. Width is bounded so LVGL knows when to start.
             lv_obj_set_width(s_wifiRows[r], 400);
@@ -2359,7 +2423,7 @@ void settingsview::init() {
         s_wifiListHint = lv_label_create(s_wifiListPage);
         lv_label_set_text(s_wifiListHint, "");
         lv_obj_set_style_text_color(s_wifiListHint, C_GREY, 0);
-        lv_obj_set_style_text_font(s_wifiListHint, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(s_wifiListHint, &font_de_14, 0);
         lv_obj_align(s_wifiListHint, LV_ALIGN_CENTER, 0, 150);
     }
 
@@ -2374,38 +2438,38 @@ void settingsview::init() {
     lv_obj_clear_flag(s_wifiPassPage, LV_OBJ_FLAG_SCROLLABLE);
     {
         s_wifiPassTitle = lv_label_create(s_wifiPassPage);
-        lv_label_set_text(s_wifiPassTitle, "Password");
+        lv_label_set_text(s_wifiPassTitle, tr("Password", "Passwort"));
         lv_label_set_long_mode(s_wifiPassTitle, LV_LABEL_LONG_DOT);
         lv_obj_set_width(s_wifiPassTitle, 300);
         lv_obj_set_style_text_color(s_wifiPassTitle, C_DIM, 0);
-        lv_obj_set_style_text_font(s_wifiPassTitle, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(s_wifiPassTitle, &font_de_16, 0);
         lv_obj_set_style_text_align(s_wifiPassTitle, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(s_wifiPassTitle, LV_ALIGN_CENTER, 0, -118);   // below the "SETTINGS" header
 
         s_passText = lv_label_create(s_wifiPassPage);
-        lv_label_set_text(s_passText, "(enter password)");
+        lv_label_set_text(s_passText, tr("(enter password)", "(Passwort eingeben)"));
         lv_label_set_long_mode(s_passText, LV_LABEL_LONG_DOT);
         lv_obj_set_width(s_passText, 320);
         lv_obj_set_style_text_align(s_passText, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(s_passText, C_WHITE, 0);
-        lv_obj_set_style_text_font(s_passText, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(s_passText, &font_de_20, 0);
         lv_obj_align(s_passText, LV_ALIGN_CENTER, 0, -70);
 
         for (int k = 0; k < 7; ++k) {
             s_wkStrip[k] = lv_label_create(s_wifiPassPage);
             lv_label_set_text(s_wkStrip[k], "");
             lv_obj_set_style_text_color(s_wkStrip[k], C_GREY, 0);
-            lv_obj_set_style_text_font(s_wkStrip[k], &lv_font_montserrat_18, 0);
+            lv_obj_set_style_text_font(s_wkStrip[k], &font_de_18, 0);
             lv_obj_align(s_wkStrip[k], LV_ALIGN_CENTER, (k - 3) * 48, 20);
         }
         s_wifiPassHint = lv_label_create(s_wifiPassPage);
         lv_label_set_text(s_wifiPassHint, // Names Back as well as OK. The old wording listed only OK, which is the same
         // discoverability gap the Back key was added to close — a way out nobody is told
         // about is a way out nobody finds.
-        "turn to a key, push to enter it\nOK connects, Back returns");
+        tr("turn to a key, push to enter it\nOK connects, Back returns", "zur Taste drehen, drücken zum Eingeben\nOK verbindet, Zurück bricht ab"));
         lv_obj_set_style_text_align(s_wifiPassHint, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(s_wifiPassHint, C_GREY, 0);
-        lv_obj_set_style_text_font(s_wifiPassHint, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(s_wifiPassHint, &font_de_14, 0);
         lv_obj_align(s_wifiPassHint, LV_ALIGN_CENTER, 0, 120);
     }
 
@@ -2422,14 +2486,14 @@ void settingsview::init() {
         s_wifiStatusLbl = lv_label_create(s_wifiStatusPage);
         lv_label_set_text(s_wifiStatusLbl, "");
         lv_obj_set_style_text_color(s_wifiStatusLbl, C_WHITE, 0);
-        lv_obj_set_style_text_font(s_wifiStatusLbl, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_font(s_wifiStatusLbl, &font_de_20, 0);
         lv_obj_set_style_text_align(s_wifiStatusLbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(s_wifiStatusLbl, LV_ALIGN_CENTER, 0, -20);
 
         s_wifiStatusHint = lv_label_create(s_wifiStatusPage);
         lv_label_set_text(s_wifiStatusHint, "");
         lv_obj_set_style_text_color(s_wifiStatusHint, C_GREY, 0);
-        lv_obj_set_style_text_font(s_wifiStatusHint, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(s_wifiStatusHint, &font_de_14, 0);
         lv_obj_set_style_text_align(s_wifiStatusHint, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(s_wifiStatusHint, LV_ALIGN_CENTER, 0, 90);
     }

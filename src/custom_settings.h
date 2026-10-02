@@ -24,4 +24,4 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-#define CUSTOM_SETTINGS_FONT (&lv_font_montserrat_20)
+#define CUSTOM_SETTINGS_FONT (&font_de_20)

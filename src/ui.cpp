@@ -1,6 +1,7 @@
 // M3 UI: tileview (radar / list / stats) + tap-to-inspect detail card.
 // Pure LVGL, portable. Taps hit-test via radar::hitTest; selection lives in radar.
 #include "ui.h"
+#include "lang.h"
 #include "theme_style.h"
 #include "orb_text_case.h"   // ALL CAPS on a finished line, THEME_CAPS 53
 #include "plate_sprite.h"
@@ -160,9 +161,9 @@ void ui_set_units(int u) { s_units = (u < 0 || u > 2) ? 0 : u; }
 // toggle saves to NVS and reboots, so it always takes effect through this path).
 static bool s_bigText = false;
 void ui_set_large_text(bool on) { s_bigText = on; }
-static const lv_font_t *F12() { return s_bigText ? &lv_font_montserrat_16 : &lv_font_montserrat_12; }
-static const lv_font_t *F14() { return s_bigText ? &lv_font_montserrat_18 : &lv_font_montserrat_14; }
-static const lv_font_t *F16() { return s_bigText ? &lv_font_montserrat_20 : &lv_font_montserrat_16; }
+static const lv_font_t *F12() { return s_bigText ? &font_de_16 : &font_de_12; }
+static const lv_font_t *F14() { return s_bigText ? &font_de_18 : &font_de_14; }
+static const lv_font_t *F16() { return s_bigText ? &font_de_20 : &font_de_16; }
 
 static void fmt_alt(char *b, size_t n, float ft, bool gnd) {
     if (gnd)            snprintf(b, n, "GND");
@@ -294,15 +295,15 @@ static void refresh_card(void) {
     }
     char rfrom[40], rto[40];
     if (!in.call[0]) {
-        lv_label_set_text(s_cardRoute, "Route -");                 // no callsign -> nothing to look up
+        lv_label_set_text(s_cardRoute, tr("Route -", "Route -"));                 // no callsign -> nothing to look up
     } else if (route_get(in.call, rfrom, sizeof(rfrom), rto, sizeof(rto))) {
         char rt[96];
         if (rfrom[0] || rto[0]) snprintf(rt, sizeof(rt), "%s -> %s", rfrom[0] ? rfrom : "?", rto[0] ? rto : "?");
-        else                    snprintf(rt, sizeof(rt), "Route unavailable");
+        else                    snprintf(rt, sizeof(rt), tr("Route unavailable", "Route unbekannt"));
         fold_ascii(rt);
         lv_label_set_text(s_cardRoute, rt);
     } else {
-        lv_label_set_text(s_cardRoute, "Looking up route...");     // pending: lookup in flight
+        lv_label_set_text(s_cardRoute, tr("Looking up route...", "Suche Route..."));     // pending: lookup in flight
     }
 
     // aircraft photo (planespotters), shown above the card when one is available
@@ -318,7 +319,7 @@ static void refresh_card(void) {
         lv_obj_invalidate(s_photo);
         if (s_photoCredit) {
             char c[52];
-            snprintf(c, sizeof(c), "Photo: %s", pcred[0] ? pcred : "planespotters.net");
+            snprintf(c, sizeof(c), tr("Photo: %s", "Foto: %s"), pcred[0] ? pcred : "planespotters.net");
             lv_label_set_text(s_photoCredit, c);
             lv_obj_align_to(s_photoCredit, s_photo, LV_ALIGN_OUT_BOTTOM_MID, 0, 1);
             lv_obj_clear_flag(s_photoCredit, LV_OBJ_FLAG_HIDDEN);
@@ -330,7 +331,7 @@ static void refresh_card(void) {
         lv_obj_add_flag(s_photo, LV_OBJ_FLAG_HIDDEN);
         if (s_photoCredit) {
             const bool done = in.hex[0] && photo_done(in.hex);
-            lv_label_set_text(s_photoCredit, done ? "No photo available" : "Loading photo...");
+            lv_label_set_text(s_photoCredit, done ? tr("No photo available", "Kein Foto vorhanden") : tr("Loading photo...", "Lade Foto..."));
             lv_obj_align(s_photoCredit, LV_ALIGN_CENTER, 0, -104);   // where the photo would sit
             lv_obj_clear_flag(s_photoCredit, LV_OBJ_FLAG_HIDDEN);
         }
@@ -562,7 +563,7 @@ static void wx_text_refresh(void) {
             if (ago < 0) ago = 0;                 // a frame stamped slightly ahead of us
             const long mins = (ago + 30) / 60;    // to the nearest minute
             snprintf(ageMinS, sizeof(ageMinS), "%ld", mins);
-            if (ago < 90) snprintf(ageS, sizeof(ageS), "now");
+            if (ago < 90) snprintf(ageS, sizeof(ageS), tr("now", "jetzt"));
             else          snprintf(ageS, sizeof(ageS), "%ld min", mins);
         }
     }
@@ -660,9 +661,9 @@ static void build_weather(void) {
     if (!s_weatherNow || !s_weatherMeta || !s_weatherDays || !s_wxFooter) return;
     WeatherSnapshot w;
     if (!weather_get(w)) {
-        lv_label_set_text(s_weatherNow, "Forecast unavailable");
-        lv_label_set_text(s_weatherMeta, "Waiting for WiFi data...");
-        lv_label_set_text(s_wxFooter, "WEATHER DATA PENDING");
+        lv_label_set_text(s_weatherNow, tr("Forecast unavailable", "Keine Vorhersage"));
+        lv_label_set_text(s_weatherMeta, tr("Waiting for WiFi data...", "Warte auf WLAN-Daten..."));
+        lv_label_set_text(s_wxFooter, tr("WEATHER DATA PENDING", "WETTERDATEN AUSSTEHEND"));
         lv_label_set_text(s_weatherDays, "");
     } else {
         char now[96];
@@ -670,7 +671,7 @@ static void build_weather(void) {
                  weather_temp_unit(), weather_condition(w.code));
         lv_label_set_text(s_weatherNow, now);
         char meta[128];
-        snprintf(meta, sizeof(meta), "Feels %.0f %s   Humidity %d%%\nWind %.0f %s  %s   Updated %s",
+        snprintf(meta, sizeof(meta), tr("Feels %.0f %s   Humidity %d%%\nWind %.0f %s  %s   Updated %s", "Gefühlt %.0f %s   Feuchte %d%%\nWind %.0f %s  %s   Stand %s"),
                  weather_temp(w.feelsC), weather_temp_unit(), w.humidity,
                  weather_wind(w.windKmh), weather_wind_unit(), cardinal((float)w.windDeg), w.updated);
         lv_label_set_text(s_weatherMeta, meta);
@@ -680,7 +681,7 @@ static void build_weather(void) {
                  weather_temp_unit(), weather_condition(w.code));
         lv_label_set_text(s_wxFooter, footer);
         char wxmeta[96];
-        snprintf(wxmeta, sizeof(wxmeta), "WIND %s %.0f %s   HUM %d%%",
+        snprintf(wxmeta, sizeof(wxmeta), tr("WIND %s %.0f %s   HUM %d%%", "WIND %s %.0f %s   FEUCHTE %d%%"),
                  cardinal((float)w.windDeg), weather_wind(w.windKmh), weather_wind_unit(), w.humidity);
         lv_label_set_text(s_wxMeta, wxmeta);
 
@@ -699,7 +700,7 @@ static void build_weather(void) {
         char wind[28]; snprintf(wind, sizeof(wind), "%s %.0f %s", cardinal((float)w.windDeg),
                                 weather_wind(w.windKmh), weather_wind_unit());
         lv_label_set_text(s_fcMetricValue[2], wind);
-        char updated[24]; snprintf(updated, sizeof(updated), "UPDATED %s", w.updated);
+        char updated[24]; snprintf(updated, sizeof(updated), tr("UPDATED %s", "STAND %s"), w.updated);
         lv_label_set_text(s_fcUpdated, updated);
 
         for (int col = 0; col < 3; ++col) {
@@ -711,7 +712,7 @@ static void build_weather(void) {
                 snprintf(temps, sizeof(temps), "%.0f / %.0f %s",
                          weather_temp(w.days[i].tempMaxC), weather_temp(w.days[i].tempMinC), weather_temp_unit());
                 lv_label_set_text(s_fcDayTemp[col], temps);
-                char chance[20]; snprintf(chance, sizeof(chance), "RAIN %d%%", w.days[i].rainChance);
+                char chance[20]; snprintf(chance, sizeof(chance), tr("RAIN %d%%", "REGEN %d%%"), w.days[i].rainChance);
                 lv_label_set_text(s_fcDayRain[col], chance);
             } else {
                 lv_label_set_text(s_fcDay[col], "-");
@@ -760,7 +761,7 @@ static void build_weather(void) {
             char apt[64];
             snprintf(apt, sizeof(apt), "O  %s   %.0f %s %s", iata, dist_val(d), dist_unit(), cardinal(b));
             lv_label_set_text(s_wxAirport, apt);
-        } else lv_label_set_text(s_wxAirport, "RADAR CENTRE");
+        } else lv_label_set_text(s_wxAirport, tr("RADAR CENTRE", "RADARMITTE"));
         char stamp[6] = "--:--";
         time_t ft = (time_t)frameTime; struct tm ti;
         if (frameTime && localtime_r(&ft, &ti)) snprintf(stamp, sizeof(stamp), "%02d:%02d", ti.tm_hour, ti.tm_min);
@@ -771,7 +772,7 @@ static void build_weather(void) {
         // honest without putting a second banner over the weather somebody came to look at.
         int fdone = 0, ftotal = 0;
         if (!cloudMode && wx_phase_get(&fdone, &ftotal) == WX_PHASE_FRAMES)
-            snprintf(attr, sizeof(attr), "RADAR %s  |  LOADING %d/%d", stamp, fdone, ftotal);
+            snprintf(attr, sizeof(attr), tr("RADAR %s  |  LOADING %d/%d", "RADAR %s  |  LADE %d/%d"), stamp, fdone, ftotal);
         else
             if (wx_slots_active()) snprintf(attr, sizeof(attr), cloudMode ? "EUMETSAT" : "RAINVIEWER");
             else snprintf(attr, sizeof(attr), cloudMode ? "SAT %s  |  EUMETSAT" : "RADAR %s  |  RAINVIEWER", stamp);
@@ -779,8 +780,8 @@ static void build_weather(void) {
     } else {
         if (s_wxCanvas) lv_obj_add_flag(s_wxCanvas, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(s_wxStatus, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(s_wxAirport, "RADAR CENTRE");
-        lv_label_set_text(s_wxAttrib, cloudMode ? "WAITING FOR SATELLITE DATA" : "WAITING FOR RADAR DATA");
+        lv_label_set_text(s_wxAirport, tr("RADAR CENTRE", "RADARMITTE"));
+        lv_label_set_text(s_wxAttrib, cloudMode ? tr("WAITING FOR SATELLITE DATA", "WARTE AUF SATELLITENDATEN") : tr("WAITING FOR RADAR DATA", "WARTE AUF RADARDATEN"));
         if (!cloudMode) wx_status_paint();
     }
 
@@ -1270,10 +1271,10 @@ void ui_create(void) {
     lv_obj_set_style_radius(s_weatherTitle, 8, 0);
     s_weatherNow = lv_label_create(wp);
     lv_obj_set_width(s_weatherNow, 330);
-    lv_obj_set_style_text_font(s_weatherNow, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(s_weatherNow, &font_de_28, 0);
     lv_obj_set_style_text_color(s_weatherNow, UI_INK, 0);
     lv_obj_set_style_text_align(s_weatherNow, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_weatherNow, "Forecast unavailable");
+    lv_label_set_text(s_weatherNow, tr("Forecast unavailable", "Keine Vorhersage"));
     lv_obj_align(s_weatherNow, LV_ALIGN_TOP_MID, 0, 64);
 
     s_weatherMeta = lv_label_create(wp);
@@ -1281,7 +1282,7 @@ void ui_create(void) {
     lv_obj_set_style_text_font(s_weatherMeta, F14(), 0);
     lv_obj_set_style_text_color(s_weatherMeta, UI_SOFT, 0);
     lv_obj_set_style_text_align(s_weatherMeta, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_weatherMeta, "Waiting for WiFi data...");
+    lv_label_set_text(s_weatherMeta, tr("Waiting for WiFi data...", "Warte auf WLAN-Daten..."));
     lv_obj_align(s_weatherMeta, LV_ALIGN_TOP_MID, 0, 150);
 
     s_weatherDays = lv_label_create(wp);
@@ -1306,7 +1307,7 @@ void ui_create(void) {
     lv_obj_set_style_pad_left(s_wxAirport, 6, 0);
     lv_obj_set_style_pad_right(s_wxAirport, 6, 0);
     lv_obj_set_style_radius(s_wxAirport, 6, 0);
-    lv_label_set_text(s_wxAirport, "RADAR CENTRE");
+    lv_label_set_text(s_wxAirport, tr("RADAR CENTRE", "RADARMITTE"));
     lv_obj_align(s_wxAirport, LV_ALIGN_TOP_MID, 0, 46);
     // The same backing the title above it and the readouts below it already had. Without
     // one, the outer range ring and the sweep both draw straight through this line, and it
@@ -1339,7 +1340,7 @@ void ui_create(void) {
     s_wxStatus = lv_label_create(wp);
     lv_obj_set_style_text_font(s_wxStatus, F14(), 0);
     lv_obj_set_style_text_color(s_wxStatus, UI_DIM, 0);
-    lv_label_set_text(s_wxStatus, "ACQUIRING WX RADAR...");
+    lv_label_set_text(s_wxStatus, tr("ACQUIRING WX RADAR...", "LADE WETTERRADAR..."));
     lv_obj_set_style_text_align(s_wxStatus, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_line_space(s_wxStatus, 4, 0);
     lv_timer_create(wx_status_timer_cb, 500, nullptr);
@@ -1391,7 +1392,7 @@ void ui_create(void) {
     // where a north marker belongs.
     lv_obj_align(s_wxNorth, LV_ALIGN_TOP_MID, 0, 66);
     s_wxCenter = lv_label_create(wp);
-    lv_obj_set_style_text_font(s_wxCenter, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(s_wxCenter, &font_de_28, 0);
     lv_obj_set_style_text_color(s_wxCenter, UI_INK, 0);
     lv_label_set_text(s_wxCenter, "+");
     lv_obj_align(s_wxCenter, LV_ALIGN_TOP_MID, 0, 219);
@@ -1402,7 +1403,7 @@ void ui_create(void) {
     lv_obj_align(s_wxRange, LV_ALIGN_TOP_MID, 128, 225);
 
     s_wxUpdateOverlay = lv_label_create(wp);
-    lv_obj_set_style_text_font(s_wxUpdateOverlay, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_wxUpdateOverlay, &font_de_16, 0);
     lv_obj_set_style_text_color(s_wxUpdateOverlay, UI_GREEN, 0);
     lv_obj_set_style_bg_color(s_wxUpdateOverlay, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_wxUpdateOverlay, 220, 0);
@@ -1411,7 +1412,7 @@ void ui_create(void) {
     lv_obj_set_style_pad_top(s_wxUpdateOverlay, 10, 0);
     lv_obj_set_style_pad_bottom(s_wxUpdateOverlay, 10, 0);
     lv_obj_set_style_radius(s_wxUpdateOverlay, 8, 0);
-    lv_label_set_text(s_wxUpdateOverlay, "UPDATING");
+    lv_label_set_text(s_wxUpdateOverlay, tr("UPDATING", "AKTUALISIERE"));
     lv_obj_align(s_wxUpdateOverlay, LV_ALIGN_TOP_MID, 0, 214);   // centered over the canvas/rings
     lv_obj_add_flag(s_wxUpdateOverlay, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(s_wxUpdateOverlay);
@@ -1425,7 +1426,7 @@ void ui_create(void) {
         lv_obj_move_foreground(s_wxUpdateOverlay);
         s_wxUpdateDots = (s_wxUpdateDots + 1) % 4;
         char b[16];
-        snprintf(b, sizeof(b), "UPDATING%.*s", s_wxUpdateDots, "...");
+        snprintf(b, sizeof(b), tr("UPDATING%.*s", "AKTUALISIERE%.*s"), s_wxUpdateDots, "...");
         lv_label_set_text(s_wxUpdateOverlay, b);
     }, 400, nullptr);
 
@@ -1443,7 +1444,7 @@ void ui_create(void) {
     lv_obj_set_style_text_font(s_wxFooter, F16(), 0);
     lv_obj_set_style_text_color(s_wxFooter, UI_INK, 0);
     lv_obj_set_style_text_align(s_wxFooter, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_text(s_wxFooter, "WEATHER DATA PENDING");
+    lv_label_set_text(s_wxFooter, tr("WEATHER DATA PENDING", "WETTERDATEN AUSSTEHEND"));
     lv_obj_align(s_wxFooter, LV_ALIGN_TOP_MID, 0, 326);
     lv_obj_set_style_bg_color(s_wxFooter, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_wxFooter, 185, 0);
@@ -1478,7 +1479,7 @@ void ui_create(void) {
     s_wxAttrib = lv_label_create(wp);
     lv_obj_set_style_text_font(s_wxAttrib, F12(), 0);
     lv_obj_set_style_text_color(s_wxAttrib, UI_DIM, 0);
-    lv_label_set_text(s_wxAttrib, "WAITING FOR RADAR DATA");
+    lv_label_set_text(s_wxAttrib, tr("WAITING FOR RADAR DATA", "WARTE AUF RADARDATEN"));
     lv_obj_align(s_wxAttrib, LV_ALIGN_TOP_MID, 0, 376);
     lv_obj_set_style_bg_color(s_wxAttrib, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_wxAttrib, 170, 0);
@@ -1490,17 +1491,17 @@ void ui_create(void) {
 
     // Forecast mode: independent, aligned objects instead of a tiny text table.
     s_fcCurrent = lv_label_create(wp);
-    lv_obj_set_style_text_font(s_fcCurrent, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(s_fcCurrent, &font_de_28, 0);
     lv_obj_set_style_text_color(s_fcCurrent, UI_INK, 0);
     lv_label_set_text(s_fcCurrent, "-- C");
     lv_obj_align(s_fcCurrent, LV_ALIGN_TOP_MID, 0, 68);
     s_fcCondition = lv_label_create(wp);
     lv_obj_set_style_text_font(s_fcCondition, F16(), 0);
     lv_obj_set_style_text_color(s_fcCondition, UI_SOFT, 0);
-    lv_label_set_text(s_fcCondition, "Waiting for data");
+    lv_label_set_text(s_fcCondition, tr("Waiting for data", "Warte auf Daten"));
     lv_obj_align(s_fcCondition, LV_ALIGN_TOP_MID, 0, 105);
 
-    const char *metricNames[3] = { "FEELS", "HUMIDITY", "WIND" };
+    const char *metricNames[3] = { tr("FEELS", "GEFÜHLT"), tr("HUMIDITY", "FEUCHTE"), "WIND" };
     const int colX[3] = { -122, 0, 122 };
     for (int i = 0; i < 3; ++i) {
         s_fcMetricName[i] = lv_label_create(wp);

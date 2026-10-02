@@ -1,4 +1,5 @@
 #include "forecast_view.h"
+#include "lang.h"
 #include "day_ring.h"
 #include "weather.h"
 #include "wx_icons.h"
@@ -65,44 +66,45 @@ Look look_for(int code) {
 
 const char *condition_de(int code, bool day) {
     switch (code) {
-        case 0:  return day ? "Sonnig" : "Klar";
-        case 1:  return day ? "Heiter" : "Überwiegend klar";
-        case 2:  return "Teilweise bewölkt";
-        case 3:  return "Bedeckt";
-        case 45: return "Nebel";
-        case 48: return "Reifnebel";
-        case 51: return "Leichter Niesel";
-        case 53: return "Nieselregen";
-        case 55: return "Starker Niesel";
-        case 56: case 57: return "Gefrierender Niesel";
-        case 61: return "Leichter Regen";
-        case 63: return "Regen";
-        case 65: return "Starker Regen";
-        case 66: case 67: return "Gefrierender Regen";
-        case 71: return "Leichter Schneefall";
-        case 73: return "Schneefall";
-        case 75: return "Starker Schneefall";
-        case 77: return "Schneegriesel";
-        case 80: return "Leichte Schauer";
-        case 81: return "Schauer";
-        case 82: return "Starke Schauer";
-        case 85: return "Schneeschauer";
-        case 86: return "Starke Schneeschauer";
-        case 95: return "Gewitter";
-        case 96: case 99: return "Gewitter mit Hagel";
-        default: return "Wetter unbekannt";
+        case 0:  return day ? tr("Sunny", "Sonnig") : tr("Clear", "Klar");
+        case 1:  return day ? tr("Mostly sunny", "Heiter") : tr("Mostly clear", "Überwiegend klar");
+        case 2:  return tr("Partly cloudy", "Teilweise bewölkt");
+        case 3:  return tr("Overcast", "Bedeckt");
+        case 45: return tr("Fog", "Nebel");
+        case 48: return tr("Freezing fog", "Reifnebel");
+        case 51: return tr("Light drizzle", "Leichter Niesel");
+        case 53: return tr("Drizzle", "Nieselregen");
+        case 55: return tr("Heavy drizzle", "Starker Niesel");
+        case 56: case 57: return tr("Freezing drizzle", "Gefrierender Niesel");
+        case 61: return tr("Light rain", "Leichter Regen");
+        case 63: return tr("Rain", "Regen");
+        case 65: return tr("Heavy rain", "Starker Regen");
+        case 66: case 67: return tr("Freezing rain", "Gefrierender Regen");
+        case 71: return tr("Light snow", "Leichter Schneefall");
+        case 73: return tr("Snow", "Schneefall");
+        case 75: return tr("Heavy snow", "Starker Schneefall");
+        case 77: return tr("Snow grains", "Schneegriesel");
+        case 80: return tr("Light showers", "Leichte Schauer");
+        case 81: return tr("Showers", "Schauer");
+        case 82: return tr("Heavy showers", "Starke Schauer");
+        case 85: return tr("Snow showers", "Schneeschauer");
+        case 86: return tr("Heavy snow showers", "Starke Schneeschauer");
+        case 95: return tr("Thunderstorm", "Gewitter");
+        case 96: case 99: return tr("Thunderstorm, hail", "Gewitter mit Hagel");
+        default: return tr("Unknown weather", "Wetter unbekannt");
     }
 }
 
 // "2026-10-01" -> "DO". Zeller-free: mktime does the calendar.
 const char *day_abbrev(const char *iso) {
     static const char *DE[] = { "SO", "MO", "DI", "MI", "DO", "FR", "SA" };
+    static const char *EN[] = { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
     int y, m, d;
     if (!iso || sscanf(iso, "%d-%d-%d", &y, &m, &d) != 3) return "";
     struct tm t = {};
     t.tm_year = y - 1900; t.tm_mon = m - 1; t.tm_mday = d; t.tm_hour = 12;
     mktime(&t);
-    return DE[t.tm_wday % 7];
+    return (lang::de() ? DE : EN)[t.tm_wday % 7];
 }
 
 // ---- building blocks -----------------------------------------------------------------------
@@ -188,7 +190,7 @@ void refresh() {
         draw_symbol(look_for(3), day);
         lv_label_set_text(s_temp, "--°");
         lv_obj_set_style_text_color(s_temp, lv_color_hex(COL_DIM), 0);
-        lv_label_set_text(s_cond, host_wifi_connected() ? "Wetterdaten werden geladen" : "Kein WLAN");
+        lv_label_set_text(s_cond, host_wifi_connected() ? tr("Loading weather data", "Wetterdaten werden geladen") : tr("No WiFi", "Kein WLAN"));
         lv_obj_add_flag(s_cap, LV_OBJ_FLAG_HIDDEN);
         return;
     }
@@ -203,11 +205,11 @@ void refresh() {
     // the condition alone, rather than a second line running into the capsule. Measured on
     // the plain text: the recolour marks draw nothing.
     const char *cond = condition_de(w.code, day);
-    snprintf(b, sizeof(b), "%s · gefühlt %ld°", cond, lroundf(w.feelsC));
+    snprintf(b, sizeof(b), tr("%s · feels %ld°", "%s · gefühlt %ld°"), cond, lroundf(w.feelsC));
     lv_point_t sz;
     lv_txt_get_size(&sz, b, &font_sora_21, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
     if (sz.x <= COND_MAX_W)
-        snprintf(b, sizeof(b), "%s #8F8B83 ·# gefühlt %ld°", cond, lroundf(w.feelsC));
+        snprintf(b, sizeof(b), tr("%s #8F8B83 ·# feels %ld°", "%s #8F8B83 ·# gefühlt %ld°"), cond, lroundf(w.feelsC));
     else
         snprintf(b, sizeof(b), "%s", cond);
     lv_label_set_text(s_cond, b);

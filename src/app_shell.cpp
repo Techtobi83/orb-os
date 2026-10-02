@@ -377,13 +377,13 @@ void app_shell::begin() {
 
     s_overlayLabel = lv_label_create(s_overlay);
     lv_obj_set_style_text_color(s_overlayLabel, pal.ink, 0);
-    lv_obj_set_style_text_font(s_overlayLabel, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(s_overlayLabel, &font_de_48, 0);
     lv_obj_align(s_overlayLabel, LV_ALIGN_CENTER, 0, -12);
 
     s_overlayHint = lv_label_create(s_overlay);
     lv_label_set_text(s_overlayHint, "push to open");
     lv_obj_set_style_text_color(s_overlayHint, pal.dim, 0);
-    lv_obj_set_style_text_font(s_overlayHint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_overlayHint, &font_de_16, 0);
     lv_obj_align(s_overlayHint, LV_ALIGN_CENTER, 0, 40);
 
 #if CUSTOM_HAS_MENU

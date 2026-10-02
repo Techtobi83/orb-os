@@ -1540,6 +1540,12 @@ void labelFor(const char *slug, char *out, size_t cap);
 // A theme whose theme.json has no "assets" list answers true for everything, so older
 // themes already on a card behave exactly as before.
 bool hasAsset(const char *name);
+// The German version of a theme picture: "clock_plate.png" -> "clock_plate_de.png" when the
+// Orb runs in German (Settings > Language) and the theme declares that file, otherwise the
+// name unchanged. For words a designer painted into the art, which no tr() can reach. The
+// fingerprint below takes the language into account whenever a theme ships any _de file,
+// so switching language re-bakes the flash copy instead of serving the other language.
+const char *localized(const char *name, char *buf, size_t n);
 
 // A hash of the declared asset list, or 0 when the theme declares none. theme_art stores
 // this alongside a bake and re-bakes whenever it changes, so editing a theme's layers is

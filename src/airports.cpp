@@ -51,7 +51,7 @@ void airports_draw(lv_draw_ctx_t *ctx, lv_color_t color, lv_opa_t opa) {
 
     lv_draw_label_dsc_t lbl;
     lv_draw_label_dsc_init(&lbl);
-    lbl.color = color; lbl.opa = opa; lbl.font = &lv_font_montserrat_12;
+    lbl.color = color; lbl.opa = opa; lbl.font = &font_de_12;
 
     for (const Apt &ap : s_apts) {
         if (ap.large) {

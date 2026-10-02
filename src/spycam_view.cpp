@@ -531,7 +531,7 @@ void spycamview::init() {
     lv_label_set_text(s_msg, "NO SIGNAL\n(no /spycam_frames/ on SD card)");
     lv_obj_set_style_text_align(s_msg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_msg, office ? app_theme::palette().soft : lv_color_hex(0x6A7078), 0);
-    lv_obj_set_style_text_font(s_msg, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_msg, &font_de_16, 0);
     lv_obj_center(s_msg);
 
     // project_map() (the heavy ~45k-point Europe coastline reprojection) is NOT run here
@@ -555,7 +555,7 @@ void spycamview::init() {
     lv_label_set_text(s_connLabel, "");
     lv_obj_set_style_text_align(s_connLabel, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_connLabel, lv_color_hex(0xD9C9A3), 0);
-    lv_obj_set_style_text_font(s_connLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_connLabel, &font_de_16, 0);
     lv_obj_set_style_bg_color(s_connLabel, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_connLabel, 220, 0);
     lv_obj_set_style_radius(s_connLabel, 0, 0);
@@ -568,13 +568,13 @@ void spycamview::init() {
     s_cityLabel = lv_label_create(s_screen);
     lv_label_set_text(s_cityLabel, "");
     lv_obj_set_style_text_color(s_cityLabel, lv_color_black(), 0);
-    lv_obj_set_style_text_font(s_cityLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_cityLabel, &font_de_16, 0);
     lv_obj_add_flag(s_cityLabel, LV_OBJ_FLAG_HIDDEN);
 
     s_camLabel = lv_label_create(s_screen);
     lv_label_set_text(s_camLabel, CAMS[0].label);
     lv_obj_set_style_text_color(s_camLabel, office ? app_theme::palette().soft : lv_color_hex(0x6A7078), 0);
-    lv_obj_set_style_text_font(s_camLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_camLabel, &font_de_14, 0);
     lv_obj_align(s_camLabel, LV_ALIGN_BOTTOM_MID, 0, -18);
 
     lv_timer_create(tick_cb, 1000 / SPYCAM_FPS, nullptr);

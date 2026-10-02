@@ -4,6 +4,7 @@
 //   THEME_ORB   : Orb scope: green gradient, square grid, the 7 nearest
 //                    aircraft as yellow balls (emitting waves) + off-range arrows.
 #include "radar_view.h"
+#include "lang.h"
 #include "display.h"   // display_lvgl_us(): see the frame profiler below
 #include "curved_text.h"
 #include "app_theme.h"
@@ -1581,14 +1582,14 @@ static void ac_draw_cb(lv_event_t *e) {
         if (!drg) {
             lv_draw_label_dsc_t lc;
             lv_draw_label_dsc_init(&lc);
-            lc.font = s_bigText ? &lv_font_montserrat_18 : &lv_font_montserrat_14;
+            lc.font = s_bigText ? &font_de_18 : &font_de_14;
             lc.color = s_cInk;
             lv_area_t a1 = { (lv_coord_t)(ac.pos.x + 12), (lv_coord_t)(ac.pos.y - 14),
                              (lv_coord_t)(ac.pos.x + 168), (lv_coord_t)(ac.pos.y + 4) };
             if (ac.call[0]) lv_draw_label(d, &lc, &a1, ac.call, NULL);
             lv_draw_label_dsc_t la;
             lv_draw_label_dsc_init(&la);
-            la.font = s_bigText ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
+            la.font = s_bigText ? &font_de_16 : &font_de_12;
             la.color = ac.color;
             lv_area_t a2 = { a1.x1, (lv_coord_t)(ac.pos.y + 4), a1.x2, (lv_coord_t)(ac.pos.y + 26) };
             if (ac.altTxt[0]) lv_draw_label(d, &la, &a2, ac.altTxt, NULL);
@@ -1810,7 +1811,7 @@ void setThemeChangedCb(void (*cb)(int)) { s_themeCb = cb; }
 // that the feed is fine.
 void setFeedNote(const char *note) {
     if (!s_loading || !s_loadingPending) return;
-    lv_label_set_text(s_loading, note ? note : "Loading aircraft\nand location data");
+    lv_label_set_text(s_loading, note ? note : tr("Loading aircraft\nand location data", "Lade Flugzeuge\nund Standort"));
 }
 
 
@@ -1959,14 +1960,14 @@ void init(void *lv_parent) {
     lv_obj_clear_flag(s_sweepImg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(s_sweepImg, LV_OBJ_FLAG_HIDDEN);
 
-    s_rose[0] = make_label(parent, "N", &lv_font_montserrat_28, COL_INK,  LV_ALIGN_TOP_MID,    0, 12);
-    s_rose[1] = make_label(parent, "S", &lv_font_montserrat_16, COL_SOFT, LV_ALIGN_BOTTOM_MID, 0, -12);
-    s_rose[2] = make_label(parent, "E", &lv_font_montserrat_16, COL_SOFT, LV_ALIGN_RIGHT_MID, -12, 0);
-    s_rose[3] = make_label(parent, "W", &lv_font_montserrat_16, COL_SOFT, LV_ALIGN_LEFT_MID,   12, 0);
+    s_rose[0] = make_label(parent, "N", &font_de_28, COL_INK,  LV_ALIGN_TOP_MID,    0, 12);
+    s_rose[1] = make_label(parent, "S", &font_de_16, COL_SOFT, LV_ALIGN_BOTTOM_MID, 0, -12);
+    s_rose[2] = make_label(parent, "E", &font_de_16, COL_SOFT, LV_ALIGN_RIGHT_MID, -12, 0);
+    s_rose[3] = make_label(parent, "W", &font_de_16, COL_SOFT, LV_ALIGN_LEFT_MID,   12, 0);
 
     char rng[16];
     snprintf(rng, sizeof(rng), "%.0f km", (double)RANGE_KM_DEFAULT);
-    s_rangeLbl = make_label(parent, rng, &lv_font_montserrat_14, COL_GREEN, LV_ALIGN_CENTER, 92, -8);
+    s_rangeLbl = make_label(parent, rng, &font_de_14, COL_GREEN, LV_ALIGN_CENTER, 92, -8);
     lv_obj_set_style_text_opa(s_rangeLbl, 128, 0);
 
     // theme-name banner: flashed briefly on a theme change or a screen tap (see
@@ -1975,7 +1976,7 @@ void init(void *lv_parent) {
     // Deliberately plain and unthemeable, same reasoning as the update overlay: it is a
     // system message about the device's state, and a theme that styled it into
     // invisibility would defeat the one job it has.
-    s_loading = make_label(parent, "Loading aircraft\nand location data", &lv_font_montserrat_20,
+    s_loading = make_label(parent, tr("Loading aircraft\nand location data", "Lade Flugzeuge\nund Standort"), &font_de_20,
                            lv_color_white(), LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(s_loading, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_loading, LV_OPA_80, 0);
@@ -1989,7 +1990,7 @@ void init(void *lv_parent) {
     // this exact screen. A number that visibly counts up answers it without narrating
     // stages the poll loop does not actually have (it is one repeating step: ask, wait,
     // maybe get an answer, not a multi-part pipeline worth pretending to show).
-    s_loadTicker = make_label(parent, "", &lv_font_montserrat_14,
+    s_loadTicker = make_label(parent, "", &font_de_14,
                               lv_color_hex(0xAAB2C0), LV_ALIGN_CENTER, 0, 58);
     show(s_loadTicker, false);
     show(s_loading, false);
@@ -1998,7 +1999,7 @@ void init(void *lv_parent) {
     // answering. Deliberately NOT the big centred "Loading" box: by the time this shows,
     // there is usually a scope full of last-known traffic worth still seeing, and covering
     // it would be its own kind of lie. Amber rather than red because nothing is broken.
-    s_feedWarn = make_label(parent, "", &lv_font_montserrat_14,
+    s_feedWarn = make_label(parent, "", &font_de_14,
                             lv_color_hex(0xFFB23C), LV_ALIGN_BOTTOM_MID, 0, -46);
     lv_obj_set_style_bg_color(s_feedWarn, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_feedWarn, LV_OPA_70, 0);
@@ -2008,7 +2009,7 @@ void init(void *lv_parent) {
     lv_obj_set_style_text_line_space(s_feedWarn, 3, 0);
     show(s_feedWarn, false);
 
-    s_themeLabel = make_label(parent, "", &lv_font_montserrat_20, lv_color_white(), LV_ALIGN_TOP_MID, 0, 92);
+    s_themeLabel = make_label(parent, "", &font_de_20, lv_color_white(), LV_ALIGN_TOP_MID, 0, 92);
     lv_obj_set_style_bg_color(s_themeLabel, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(s_themeLabel, LV_OPA_90, 0);
     lv_obj_set_style_radius(s_themeLabel, 8, 0);
@@ -3218,9 +3219,11 @@ void setFeedStatus(bool wifiUp, uint32_t staleSec, bool locationKnown) {
     //
     // UX-039's test is whether the owner can tell a dead internet connection from one dead
     // feed by reading the screen. With one message for both, they could not.
-    if (!wifiUp)             msg = "No WiFi\nYour Orb is fine";
-    else if (!locationKnown) msg = "Location not set\nSettings " LV_SYMBOL_RIGHT " Location";
-    else if (staleSec >= ADSB_NO_DATA_MS / 1000) msg = "No aircraft data\n" ADSB_SOURCE_NAME " is not answering";
+    if (!wifiUp)             msg = tr("No WiFi\nYour Orb is fine", "Kein WLAN\nDein Orb ist in Ordnung");
+    else if (!locationKnown) msg = tr("Location not set\nSettings " LV_SYMBOL_RIGHT " Location",
+                                      "Standort nicht gesetzt\nEinstellungen " LV_SYMBOL_RIGHT " Standort");
+    else if (staleSec >= ADSB_NO_DATA_MS / 1000) msg = tr("No aircraft data\n" ADSB_SOURCE_NAME " is not answering",
+                                                          "Keine Flugdaten\n" ADSB_SOURCE_NAME " antwortet nicht");
     // Log only on change: this is called every status tick, and a line per tick would bury
     // the feed diagnostics underneath it.
     static const char *s_shown = nullptr;

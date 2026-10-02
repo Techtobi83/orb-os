@@ -189,8 +189,11 @@ bool bake_active_theme() {
         // check existed. See theme_style::hasAsset().
         if (!theme_style::hasAsset(ASSETS[i].name)) continue;
         if (s_progress) s_progress(ASSETS[i].name, ++attempted, totalPlanned);
-        char path[80];
-        snprintf(path, sizeof(path), "/themes/%s/%s", slug, ASSETS[i].name);
+        char path[80], loc[48];
+        // The German picture when there is one, baked under the English name: everything
+        // that later asks for ASSETS[i].name gets the language the Orb is in.
+        snprintf(path, sizeof(path), "/themes/%s/%s", slug,
+                 theme_style::localized(ASSETS[i].name, loc, sizeof(loc)));
         size_t pngLen = 0;
         uint8_t *pngBuf = theme_sd::read_whole(path, pngLen, SD_ASSET_MAX_BYTES);
         if (!pngBuf) continue;                     // asset not part of this theme: normal

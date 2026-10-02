@@ -124,7 +124,12 @@
 #define LV_FONT_MONTSERRAT_40 1
 #define LV_FONT_MONTSERRAT_44 1
 #define LV_FONT_MONTSERRAT_48 1   /* big clock face (app shell), and the top of the ladder */
-#define LV_FONT_DEFAULT &lv_font_montserrat_14
+/* German umlauts for the built-in Montserrat sizes: font_de_NN carries the umlauts, sharp s
+ * and degree sign and falls back to lv_font_montserrat_NN for everything else (src/font_de_*.c,
+ * tools/gen_lv_font.py). Every screen uses font_de_NN where it used the Montserrat, so German
+ * text never draws holes; declared here so no file has to remember to declare them. */
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(font_de_12) LV_FONT_DECLARE(font_de_14) LV_FONT_DECLARE(font_de_16) LV_FONT_DECLARE(font_de_18) LV_FONT_DECLARE(font_de_20) LV_FONT_DECLARE(font_de_22) LV_FONT_DECLARE(font_de_24) LV_FONT_DECLARE(font_de_26) LV_FONT_DECLARE(font_de_28) LV_FONT_DECLARE(font_de_32) LV_FONT_DECLARE(font_de_36) LV_FONT_DECLARE(font_de_40) LV_FONT_DECLARE(font_de_44) LV_FONT_DECLARE(font_de_48)
+#define LV_FONT_DEFAULT &font_de_14
 
 /*==================
    WIDGETS

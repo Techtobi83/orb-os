@@ -33,7 +33,7 @@ void ensure() {
     lv_obj_t *label = lv_label_create(s_panel);
     lv_label_set_text(label, "Hint:");
     lv_obj_set_style_text_color(label, lv_color_hex(0x9aa4b0), 0);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(label, &font_de_20, 0);
     lv_obj_align(label, LV_ALIGN_CENTER, 0, -84);
 
     // Wrapped by LVGL at a width that clears the bezel. It comes out four lines at this
@@ -47,7 +47,7 @@ void ensure() {
                       "\"rock\" the knob by quickly turning the "
                       "knob left and then right");
     lv_obj_set_style_text_color(body, lv_color_white(), 0);
-    lv_obj_set_style_text_font(body, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(body, &font_de_20, 0);
     lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(body, LV_ALIGN_CENTER, 0, 8);
 
@@ -62,7 +62,7 @@ void ensure() {
     lv_obj_t *hint = lv_label_create(s_panel);
     lv_label_set_text(hint, "turn or push to carry on");
     lv_obj_set_style_text_color(hint, lv_color_hex(0x5a636e), 0);
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(hint, &font_de_16, 0);
     lv_obj_align(hint, LV_ALIGN_CENTER, 0, 122);
 }
 

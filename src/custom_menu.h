@@ -34,5 +34,5 @@ extern const lv_font_t custom_menu_font1;
 }
 #endif
 #define CUSTOM_MENU_CURRENT_FONT (&custom_menu_font1)
-#define CUSTOM_MENU_PREV_FONT (&lv_font_montserrat_16)
-#define CUSTOM_MENU_NEXT_FONT (&lv_font_montserrat_16)
+#define CUSTOM_MENU_PREV_FONT (&font_de_16)
+#define CUSTOM_MENU_NEXT_FONT (&font_de_16)

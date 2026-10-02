@@ -25,6 +25,7 @@
 #include <strings.h>     // strncasecmp
 #include <esp_heap_caps.h> // heap_caps_get_info for the "mem" command
 #include "radar_view.h"  // debugHideLayer for the "layer" command
+#include "lang.h"        // the "lang" command
 void host_set_poll_override(uint32_t ms);   // main.cpp
 void host_location_reset();                 // main.cpp
 void host_set_location_from_studio(const char *name, double lat, double lon,
@@ -895,6 +896,10 @@ void dispatch(char *line) {
     else if (!strcmp(line, "locreset"))  cmd_locreset();
     else if (!strcmp(line, "setloc"))    cmd_setloc(arg);
     else if (!strcmp(line, "wifisaved")) cmd_wifisaved();
+    else if (!strcmp(line, "lang")) {               // "lang" reads, "lang 0|1" saves and restarts
+        out_reset(); out_fmt("{\"ok\":true,\"lang\":%d}", lang::get()); out_send();
+        if (arg && *arg && atoi(arg) != lang::get()) { Serial.flush(); lang::set(atoi(arg)); }
+    }
     else if (!strcmp(line, "night")) {              // "night" reads, "night 0|1|2" sets (and saves)
         if (arg && *arg) host_set_night_mode(atoi(arg));
         out_reset(); out_fmt("{\"ok\":true,\"night\":%d}", host_get_night_mode()); out_send();

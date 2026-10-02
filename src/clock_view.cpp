@@ -6,6 +6,7 @@
 // Time comes from the system clock (RTC-seeded, NTP-synced; see main.cpp). TZ is
 // applied at boot, so getLocalTime() returns local time.
 #include "clock_view.h"
+#include "lang.h"
 #include "display.h"      // orb_screen_covered(): do not redraw under a cover
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -205,7 +206,7 @@ static void draw_imperial(const struct tm *ti) {
         lv_draw_label_dsc_t ld;
         lv_draw_label_dsc_init(&ld);
         ld.color = COL_DATE;
-        ld.font  = &lv_font_montserrat_20;
+        ld.font  = &font_de_20;
         ld.align = LV_TEXT_ALIGN_CENTER;
         lv_canvas_draw_text(s_canvas, DATE_WIN_X - 24, DATE_WIN_Y - 12, 48, &ld, ds);
     }
@@ -256,7 +257,7 @@ static void draw_aviator(const struct tm *ti) {
         }
         char wd[8]; strftime(wd, sizeof(wd), "%a", ti);
         char ds[16]; snprintf(ds, sizeof(ds), "%s %d%s", wd, day, suf);
-        draw_arc_text(CX, CY, AVI_DATE_R, AVI_DATE_MID, AVI_DATE_STEP, ds, &lv_font_montserrat_18, COL_DATE_DARK);
+        draw_arc_text(CX, CY, AVI_DATE_R, AVI_DATE_MID, AVI_DATE_STEP, ds, &font_de_18, COL_DATE_DARK);
     }
 
     const float sec  = ti->tm_sec;
@@ -339,13 +340,15 @@ static void draw_digital(const struct tm *ti) {
     if (s_noTime) return;   // no weekday and no date until there is a real one to show
 
     // --- weekday strip MO..SU, today lit and underlined, the rest dim ----------
-    static const char *WD[7] = { "MO", "TU", "WE", "TH", "FR", "SA", "SU" };
+    static const char *WD_EN[7] = { "MO", "TU", "WE", "TH", "FR", "SA", "SU" };
+    static const char *WD_DE[7] = { "MO", "DI", "MI", "DO", "FR", "SA", "SO" };
+    const char *const *WD = lang::de() ? WD_DE : WD_EN;
     const int today = (ti->tm_wday + 6) % 7;   // tm_wday: 0=Sun; strip is Monday-first
     const float wy = 296, cellW = 52, stripW = cellW * 7;
     const float sx = (SCREEN_W - stripW) * 0.5f;
     lv_draw_label_dsc_t wl;
     lv_draw_label_dsc_init(&wl);
-    wl.font  = &lv_font_montserrat_16;
+    wl.font  = &font_de_16;
     wl.align = LV_TEXT_ALIGN_CENTER;
     for (int i = 0; i < 7; ++i) {
         wl.color = (i == today) ? COL_WK_ON : COL_WK_OFF;
@@ -362,7 +365,7 @@ static void draw_digital(const struct tm *ti) {
 
     const float dw = 40, dh = 66, dt = 9, dgap = 8, groupGap = 22;
     lv_point_t msz;
-    lv_txt_get_size(&msz, mon, &lv_font_montserrat_28, 0, 0, LV_COORD_MAX, 0);
+    lv_txt_get_size(&msz, mon, &font_de_28, 0, 0, LV_COORD_MAX, 0);
     const float dnumW = 2 * dw + dgap;
     const float groupW = dnumW + groupGap + msz.x;
     float gx = (SCREEN_W - groupW) * 0.5f;
@@ -373,10 +376,10 @@ static void draw_digital(const struct tm *ti) {
 
     lv_draw_label_dsc_t md;
     lv_draw_label_dsc_init(&md);
-    md.font  = &lv_font_montserrat_28;
+    md.font  = &font_de_28;
     md.color = COL_SEG_ON;
     md.align = LV_TEXT_ALIGN_LEFT;
-    const float monY = gy + (dh - lv_font_get_line_height(&lv_font_montserrat_28)) * 0.5f;
+    const float monY = gy + (dh - lv_font_get_line_height(&font_de_28)) * 0.5f;
     lv_canvas_draw_text(s_canvas, (lv_coord_t)lroundf(gx + groupGap),
                         (lv_coord_t)lroundf(monY), (lv_coord_t)lroundf(msz.x + 8), &md, mon);
 }
@@ -494,8 +497,8 @@ static void draw_office(const struct tm *ti) {
     char hh[3]; snprintf(hh, sizeof(hh), "%02d", ti->tm_hour);
     char mm[3]; snprintf(mm, sizeof(mm), "%02d", ti->tm_min);
     lv_point_t hsz, msz;
-    lv_txt_get_size(&hsz, hh, &lv_font_montserrat_48, 0, 0, LV_COORD_MAX, 0);
-    lv_txt_get_size(&msz, mm, &lv_font_montserrat_48, 0, 0, LV_COORD_MAX, 0);
+    lv_txt_get_size(&hsz, hh, &font_de_48, 0, 0, LV_COORD_MAX, 0);
+    lv_txt_get_size(&msz, mm, &font_de_48, 0, 0, LV_COORD_MAX, 0);
     const float handGap = 34.0f;   // room for the hands' pivot dot between HH and MM
 
     // Pivot at the dial's TRUE centre — the reference's dot sits right there, not offset.
@@ -503,7 +506,7 @@ static void draw_office(const struct tm *ti) {
     const float handY     = CY;
     const float pivotGap  = 30.0f;   // date line -> pivot
     const float dateGap   = 14.0f;   // time digits -> date line
-    const float dateLineH = lv_font_get_line_height(&lv_font_montserrat_20);
+    const float dateLineH = lv_font_get_line_height(&font_de_20);
     const float dateY     = handY - pivotGap - dateLineH;
     const float textY     = dateY - dateGap - hsz.y;
 
@@ -518,7 +521,7 @@ static void draw_office(const struct tm *ti) {
 
     lv_draw_label_dsc_t td;
     lv_draw_label_dsc_init(&td);
-    td.font  = &lv_font_montserrat_48;
+    td.font  = &font_de_48;
     td.color = pal.ink;
     td.align = LV_TEXT_ALIGN_LEFT;
     lv_canvas_draw_text(s_canvas, (lv_coord_t)lroundf(startX), (lv_coord_t)lroundf(textY),
@@ -546,7 +549,7 @@ static void draw_office(const struct tm *ti) {
     snprintf(dateStr, sizeof(dateStr), "%s, %s %d", wd, mo, ti->tm_mday);
     lv_draw_label_dsc_t dd;
     lv_draw_label_dsc_init(&dd);
-    dd.font  = &lv_font_montserrat_20;
+    dd.font  = &font_de_20;
     dd.color = pal.soft;
     dd.align = LV_TEXT_ALIGN_CENTER;
     lv_canvas_draw_text(s_canvas, (lv_coord_t)lroundf(CX - 200), (lv_coord_t)lroundf(dateY), 400, &dd, dateStr);
@@ -635,7 +638,11 @@ LV_FONT_DECLARE(font_sora_26);
 static void draw_date_de(const struct tm *ti) {
     const theme_style::Clock::DateDe &d = theme_style::clock().dateDe;
     if (!d.show || s_noTime || !s_canvas) return;
-    static const char *WD[7] = { "SO", "MO", "DI", "MI", "DO", "FR", "SA" };
+    // German by name ("dateDE", where it began), in the Orb's language since Settings >
+    // Language: the window is the same, the words follow the person reading it.
+    static const char *WD_DE[7] = { "SO", "MO", "DI", "MI", "DO", "FR", "SA" };
+    static const char *WD_EN[7] = { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
+    const char *const *WD = lang::de() ? WD_DE : WD_EN;
     char wd[4], day[4];
     snprintf(wd, sizeof(wd), "%s ", WD[ti->tm_wday % 7]);
     snprintf(day, sizeof(day), "%d", ti->tm_mday);

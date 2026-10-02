@@ -21,13 +21,13 @@ void ui_boot_create(void) {
     lv_obj_t *title = lv_label_create(scr);
     lv_label_set_text(title, "PLANE RADAR 2.0");
     lv_obj_set_style_text_color(title, green, 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(title, &font_de_28, 0);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -52);
 
     lv_obj_t *sub = lv_label_create(scr);
     lv_label_set_text(sub, "M0  -  display + LVGL OK");
     lv_obj_set_style_text_color(sub, lv_color_hex(0x80FF80), 0);
-    lv_obj_set_style_text_font(sub, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(sub, &font_de_16, 0);
     lv_obj_align(sub, LV_ALIGN_CENTER, 0, -14);
 
     lv_obj_t *up = lv_label_create(scr);

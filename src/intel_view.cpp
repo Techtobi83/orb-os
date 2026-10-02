@@ -434,8 +434,8 @@ void render() {
     const bool themed   = theme_font::intel_has_font(1);
     const bool autoSize = cfg.textSize == 0 && !themed;
     const lv_font_t *font = themed ? theme_font::intel_text()
-                          : autoSize ? (total > 3 ? &lv_font_montserrat_14
-                                                  : &lv_font_montserrat_16)
+                          : autoSize ? (total > 3 ? &font_de_14
+                                                  : &font_de_16)
                           : font_for(cfg.textSize);
     const lv_font_t *creditFont = slot_font(2, cfg.sourceSize);
     const int lineH   = lv_font_get_line_height(font);
@@ -700,7 +700,7 @@ void brief_style() {
     if (!s_briefPanel) return;
     const theme_style::Intel &cfg = theme_style::intel();
     const lv_font_t *headFont = theme_font::intel_has_font(1) ? theme_font::intel_text()
-                                                              : &lv_font_montserrat_16;
+                                                              : &font_de_16;
     const lv_font_t *creditFont = slot_font(2, cfg.sourceSize);
     const lv_font_t *bodyFont   = brief_body_font(cfg);
 
@@ -1232,7 +1232,7 @@ void intelview::init() {
         lv_obj_set_style_text_align(s_rows[i], LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_set_style_text_color(s_rows[i], c_text(), 0);
         lv_obj_set_style_text_opa(s_rows[i], (lv_opa_t)cfg.textOpa, 0);
-        lv_obj_set_style_text_font(s_rows[i], &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(s_rows[i], &font_de_16, 0);
         lv_label_set_text(s_rows[i], "");
         // Top of its box, so a headline that overruns grows downward into the clip rather
         // than pushing its own first line up out of the layout.
@@ -1243,7 +1243,7 @@ void intelview::init() {
         s_credit[i] = lv_label_create(s_block);
         lv_obj_set_style_text_color(s_credit[i], c_source(), 0);
         lv_obj_set_style_text_opa(s_credit[i], (lv_opa_t)cfg.sourceOpa, 0);
-        lv_obj_set_style_text_font(s_credit[i], &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_font(s_credit[i], &font_de_12, 0);
         lv_label_set_text(s_credit[i], "");
         show(s_credit[i], false);
 
@@ -1317,7 +1317,7 @@ void intelview::init() {
     lv_obj_set_style_text_align(s_empty, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(s_empty, c_source(), 0);
     lv_obj_set_style_text_opa(s_empty, (lv_opa_t)cfg.sourceOpa, 0);
-    lv_obj_set_style_text_font(s_empty, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_empty, &font_de_16, 0);
     lv_label_set_text(s_empty, empty_reason());
 
     // Glow ring first, sharp fill after: LVGL paints siblings in creation order, and the

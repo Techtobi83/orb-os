@@ -1,4 +1,5 @@
 #include "theme_style.h"
+#include "lang.h"   // localized(): German pictures
 #include "theme_sd.h"
 #include "theme_select.h"
 #include <ArduinoJson.h>
@@ -1205,7 +1206,13 @@ const char *themeLabel() {
 
 const char *themeAuthor() { return s_names.author; }
 
-uint32_t assetsFingerprint() {
+// Does this theme ship any German picture (a "_de." in a declared asset name)?
+static bool has_localized_assets() {
+    for (size_t i = 0; i < s_assetN; ++i) if (strstr(s_asset[i], "_de.")) return true;
+    return false;
+}
+
+static uint32_t assets_fingerprint_raw() {
     // Prefer Launch Kit's "assetsHash", which covers the asset CONTENTS. The name-only
     // hash below cannot see a replaced image: swap a background for a different picture
     // of the same name and the fingerprint never moves, so the device keeps serving the
@@ -1218,6 +1225,26 @@ uint32_t assetsFingerprint() {
         h ^= (uint8_t)'\n'; h *= 16777619u;
     }
     return h ? h : 1u;      // never collide with the "no manifest" sentinel
+}
+
+uint32_t assetsFingerprint() {
+    uint32_t h = assets_fingerprint_raw();
+    // German pictures are baked under the English names (see localized()), so the language
+    // is part of what was baked: a switch must look like a changed theme, or the flash keeps
+    // the other language's art.
+    if (h && lang::de() && has_localized_assets()) {
+        h = (h ^ 0x44450000u) * 16777619u;
+        if (!h) h = 1u;
+    }
+    return h;
+}
+
+const char *localized(const char *name, char *buf, size_t n) {
+    if (!name || !lang::de()) return name;
+    const char *dot = strrchr(name, '.');
+    if (!dot) return name;
+    snprintf(buf, n, "%.*s_de%s", (int)(dot - name), name, dot);
+    return (s_assetN && hasAsset(buf)) ? buf : name;
 }
 
 bool hasAsset(const char *name) {

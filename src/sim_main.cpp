@@ -754,7 +754,7 @@ static void build_updating_overlay() {
     lv_obj_t *lbl = lv_label_create(s_updatingOverlay);
     lv_label_set_text(lbl, "Updating...");
     lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(lbl, &font_de_28, 0);
     lv_obj_center(lbl);
     lv_obj_add_flag(s_updatingOverlay, LV_OBJ_FLAG_HIDDEN);
 }

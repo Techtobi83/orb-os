@@ -44,6 +44,7 @@
 #include "battery.h"                 // AXP2101 battery gauge
 #include "rtc_pcf85063.h"            // PCF85063 RTC (offline clock + date)
 #include "audio.h"                   // ES8311 alert pings
+#include "lang.h"                    // English / Deutsch: read first in setup(), tr() everywhere
 #include "knob.h"                    // rotary encoder on the 8-pin header
 #include "app_shell.h"               // "channel changer": knob flips between apps
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
@@ -791,19 +792,19 @@ static constexpr uint32_t SPECIAL_SOUND_GAP_MS = 8000;                // between
 static const char *special_reason(const Aircraft &ac, double distKm, bool &urgent, char *buf, size_t n) {
     urgent = false;
     switch (ac.squawk) {
-        case 7700: urgent = true; return "EMERGENCY 7700";
-        case 7600: urgent = true; return "RADIO FAILURE 7600";
-        case 7500: urgent = true; return "HIJACK 7500";
+        case 7700: urgent = true; return tr("EMERGENCY 7700", "NOTFALL 7700");
+        case 7600: urgent = true; return tr("RADIO FAILURE 7600", "FUNKAUSFALL 7600");
+        case 7500: urgent = true; return tr("HIJACK 7500", "ENTFÜHRUNG 7500");
         default: break;
     }
     for (const SpecialType &t : SPECIAL_TYPES)
         if (ac.type == t.icao) return t.label;
     // Germany's air rescue flies as "Christoph nn", callsign CHXnn, whoever operates it.
-    if (ac.flight.startsWith("CHX")) return "Rescue helicopter";
-    if (ac.military) return "Military";
+    if (ac.flight.startsWith("CHX")) return tr("Rescue helicopter", "Rettungshubschrauber");
+    if (ac.military) return tr("Military", "Militär");
     if (!ac.onGround && !isnan(ac.altBaro) && ac.altBaro > 0 && ac.altBaro < SPECIAL_LOW_FT
         && distKm <= SPECIAL_LOW_KM) {
-        snprintf(buf, n, "Low pass %d ft", (int)ac.altBaro);
+        snprintf(buf, n, tr("Low pass %d ft", "Tiefflug %d ft"), (int)ac.altBaro);
         return buf;
     }
     return nullptr;
@@ -829,7 +830,7 @@ static void special_banner_show(const char *text, bool urgent) {
         lv_obj_set_style_pad_ver(g_spotBanner, 8, 0);
         lv_obj_clear_flag(g_spotBanner, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
         g_spotLbl = lv_label_create(g_spotBanner);
-        lv_obj_set_style_text_font(g_spotLbl, &lv_font_montserrat_16, 0);
+        lv_obj_set_style_text_font(g_spotLbl, &font_de_16, 0);
         lv_obj_set_style_text_color(g_spotLbl, lv_color_hex(0xF2F0EA), 0);
         lv_obj_set_style_text_align(g_spotLbl, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(g_spotLbl);
@@ -1176,7 +1177,7 @@ static void build_hold_warning() {
     lv_obj_clear_flag(g_holdWarning, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     g_holdWarningLbl = lv_label_create(g_holdWarning);
     lv_obj_set_style_text_color(g_holdWarningLbl, lv_color_white(), 0);
-    lv_obj_set_style_text_font(g_holdWarningLbl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(g_holdWarningLbl, &font_de_20, 0);
     lv_obj_set_style_text_align(g_holdWarningLbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(g_holdWarningLbl);
     lv_obj_add_flag(g_holdWarning, LV_OBJ_FLAG_HIDDEN);
@@ -1194,7 +1195,7 @@ static void update_hold_warning() {
     const uint32_t total = knob::longPressMs();
     const uint32_t remainMs = (held >= total) ? 0 : (total - held);
     char buf[64];
-    snprintf(buf, sizeof(buf), "RELEASE TO CANCEL\n\nREBOOTING IN %lus",
+    snprintf(buf, sizeof(buf), tr("RELEASE TO CANCEL\n\nREBOOTING IN %lus", "LOSLASSEN ZUM ABBRECHEN\n\nNEUSTART IN %lus"),
              (unsigned long)((remainMs + 999) / 1000));
     lv_label_set_text(g_holdWarningLbl, buf);
     lv_obj_clear_flag(g_holdWarning, LV_OBJ_FLAG_HIDDEN);
@@ -1356,7 +1357,7 @@ void host_set_location(double lat, double lon) {
         lv_obj_move_foreground(g_holdWarning);
         for (int s = 3; s >= 1; s--) {
             char buf[48];
-            snprintf(buf, sizeof(buf), "LOCATION SAVED\n\nRESTARTING IN %ds", s);
+            snprintf(buf, sizeof(buf), tr("LOCATION SAVED\n\nRESTARTING IN %ds", "STANDORT GESPEICHERT\n\nNEUSTART IN %ds"), s);
             lv_label_set_text(g_holdWarningLbl, buf);
             lv_refr_now(NULL);
             delay(1000);
@@ -1378,7 +1379,7 @@ void host_factory_reset() {
         lv_obj_move_foreground(g_holdWarning);
         for (int s = 3; s >= 1; s--) {
             char buf[48];
-            snprintf(buf, sizeof(buf), "FACTORY RESET\n\nRESTARTING IN %ds", s);
+            snprintf(buf, sizeof(buf), tr("FACTORY RESET\n\nRESTARTING IN %ds", "WERKSEINSTELLUNGEN\n\nNEUSTART IN %ds"), s);
             lv_label_set_text(g_holdWarningLbl, buf);
             lv_refr_now(NULL);
             delay(1000);
@@ -2077,21 +2078,21 @@ const char *host_wifi_failure_text() {
         case WIFI_REASON_HANDSHAKE_TIMEOUT:
         case WIFI_REASON_802_1X_AUTH_FAILED:
         case WIFI_REASON_MIC_FAILURE:
-            return "Check the password.";
+            return tr("Check the password.", "Passwort prüfen.");
         case WIFI_REASON_NO_AP_FOUND:
         case WIFI_REASON_BEACON_TIMEOUT:
-            return "Network not found.";
+            return tr("Network not found.", "Netzwerk nicht gefunden.");
         case WIFI_REASON_ASSOC_FAIL:
         case WIFI_REASON_ASSOC_EXPIRE:
         case WIFI_REASON_AUTH_EXPIRE:
-            return "The network did not answer.";
+            return tr("The network did not answer.", "Das Netzwerk antwortet nicht.");
         case 0:
             // No drop at all. If it associated, the password was right and the address never
             // came: the router's DHCP, not the Orb's credentials.
-            return g_wifiAssociated ? "Joined, but got no IP address." : "No answer in time.";
+            return g_wifiAssociated ? tr("Joined, but got no IP address.", "Verbunden, aber keine IP-Adresse.") : tr("No answer in time.", "Keine Antwort.");
         default: {
             static char buf[40];
-            snprintf(buf, sizeof(buf), "Error %u.", (unsigned)g_wifiLastReason);
+            snprintf(buf, sizeof(buf), tr("Error %u.", "Fehler %u."), (unsigned)g_wifiLastReason);
             return buf;
         }
     }
@@ -3079,6 +3080,7 @@ void setup() {
     // commands worked perfectly. Must be set before begin().
     Serial.setRxBufferSize(4096);
     Serial.begin(115200);
+    lang::init();   // before any screen builds its words; see lang.h
     delay(200);
     Serial.println("\nThe Orb OS boot");
     orb_link::begin();
@@ -4147,7 +4149,7 @@ void loop() {
             char ssid[33];
             host_wifi_saved_ssid(ssid, sizeof(ssid));
             if (ssid[0]) snprintf(net, sizeof(net), "Reconnecting to\n%s", ssid);
-            else         snprintf(net, sizeof(net), "No WiFi:\nSettings > WiFi");
+            else         snprintf(net, sizeof(net), tr("No WiFi:\nSettings > WiFi", "Kein WLAN:\nEinstellungen > WLAN"));
         }
         settingsview::setNetInfo(net);   // shown on Settings > About (was the Stats screen)
         // The centre point the scope is actually using, shown on Settings > Location. Same

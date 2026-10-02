@@ -55,20 +55,20 @@ void ensure() {
     // what exactly was being updated.
     lv_label_set_text(s_title, "Updating theme");
     lv_obj_set_style_text_color(s_title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(s_title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(s_title, &font_de_28, 0);
     lv_obj_align(s_title, LV_ALIGN_CENTER, 0, -40);
 
     s_sub = lv_label_create(s_panel);
     lv_label_set_text(s_sub, "");
     lv_obj_set_style_text_color(s_sub, lv_color_hex(0x9aa4b0), 0);
-    lv_obj_set_style_text_font(s_sub, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_sub, &font_de_16, 0);
     lv_obj_set_style_text_align(s_sub, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_sub, LV_ALIGN_CENTER, 0, 6);
 
     s_hint = lv_label_create(s_panel);
     lv_label_set_text(s_hint, "Keep power connected. Do not unplug.");
     lv_obj_set_style_text_color(s_hint, lv_color_hex(0x5a636e), 0);
-    lv_obj_set_style_text_font(s_hint, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_hint, &font_de_14, 0);
     lv_obj_align(s_hint, LV_ALIGN_CENTER, 0, 60);
 }
 

@@ -271,7 +271,7 @@ void weatherview::init() {
         lv_obj_t *l = lv_label_create(s_screen);
         lv_label_set_text(l, dirs[i]);
         lv_obj_set_style_text_color(l, C_RING, 0);
-        lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_font(l, &font_de_14, 0);
         lv_obj_align(l, LV_ALIGN_CENTER, dx[i], dy[i]);
     }
 
@@ -288,25 +288,25 @@ void weatherview::init() {
     s_temp = lv_label_create(s_screen);
     lv_label_set_text(s_temp, "");
     lv_obj_set_style_text_color(s_temp, lv_color_hex(0xE8ECF1), 0);
-    lv_obj_set_style_text_font(s_temp, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(s_temp, &font_de_20, 0);
     lv_obj_align(s_temp, LV_ALIGN_CENTER, 0, -150);
 
     s_stamp = lv_label_create(s_screen);
     lv_label_set_text(s_stamp, "");
     lv_obj_set_style_text_color(s_stamp, lv_color_hex(0x9AA0A6), 0);
-    lv_obj_set_style_text_font(s_stamp, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_stamp, &font_de_16, 0);
     lv_obj_align(s_stamp, LV_ALIGN_CENTER, 0, 150);
 
     lv_obj_t *attrib = lv_label_create(s_screen);
     lv_label_set_text(attrib, "RainViewer");
     lv_obj_set_style_text_color(attrib, lv_color_hex(0x555B62), 0);
-    lv_obj_set_style_text_font(attrib, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(attrib, &font_de_12, 0);
     lv_obj_align(attrib, LV_ALIGN_CENTER, 0, 178);
 
     s_loading = lv_label_create(s_screen);
     lv_label_set_text(s_loading, "ACQUIRING WX RADAR...");
     lv_obj_set_style_text_color(s_loading, lv_color_hex(0x6A7078), 0);
-    lv_obj_set_style_text_font(s_loading, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(s_loading, &font_de_16, 0);
     lv_obj_center(s_loading);
 
     lv_timer_create(anim_cb, ANIM_MS, nullptr);

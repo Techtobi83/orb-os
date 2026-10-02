@@ -40,3 +40,13 @@ The forecast screen's typeface is Sora, Copyright 2019 The Sora Project Authors
 License 1.1. The source font and its licence are in assets/fonts/
 (Sora-Variable.ttf, Sora-OFL.txt); the src/font_sora_*.c files are bitmaps
 rendered from it by tools/gen_lv_font.py.
+
+Third-party font: Montserrat
+----------------------------
+
+The German umlauts added to the built-in Montserrat sizes (src/font_de_*.c) are
+rendered from Montserrat, Copyright 2011 The Montserrat Project Authors
+(https://github.com/JulietaUla/Montserrat), licensed under the SIL Open Font
+License 1.1. The source font and its licence are in assets/fonts/
+(Montserrat-Variable.ttf, Montserrat-OFL.txt); the bitmaps are rendered by
+tools/gen_lv_font.py.

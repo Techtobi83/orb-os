@@ -77,18 +77,18 @@ const lv_font_t *size_font(int px) {
     // quality; asking for one and getting the nearest is how a theme silently redesigns
     // itself. Unknown values land on the default rather than the closest.
     switch (px) {
-        case 12: return &lv_font_montserrat_12;
-        case 14: return &lv_font_montserrat_14;
-        case 16: return &lv_font_montserrat_16;
-        case 18: return &lv_font_montserrat_18;
-        case 20: return &lv_font_montserrat_20;
-        case 22: return &lv_font_montserrat_22;
-        case 24: return &lv_font_montserrat_24;
-        case 28: return &lv_font_montserrat_28;
-        case 32: return &lv_font_montserrat_32;
-        case 40: return &lv_font_montserrat_40;
-        case 48: return &lv_font_montserrat_48;
-        default: return &lv_font_montserrat_16;
+        case 12: return &font_de_12;
+        case 14: return &font_de_14;
+        case 16: return &font_de_16;
+        case 18: return &font_de_18;
+        case 20: return &font_de_20;
+        case 22: return &font_de_22;
+        case 24: return &font_de_24;
+        case 28: return &font_de_28;
+        case 32: return &font_de_32;
+        case 40: return &font_de_40;
+        case 48: return &font_de_48;
+        default: return &font_de_16;
     }
 }
 
@@ -330,14 +330,14 @@ void init() {
     lv_obj_set_style_text_align(s_change, LV_TEXT_ALIGN_CENTER, 0);
 
     s_note = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_note, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_note, &font_de_14, 0);
     lv_obj_set_style_text_color(s_note, lv_color_hex(0x8A94A6), 0);
     lv_obj_set_style_text_align(s_note, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(s_note, "");
     lv_obj_align(s_note, LV_ALIGN_TOP_MID, 0, 330);
 
     s_dots = lv_label_create(s_screen);
-    lv_obj_set_style_text_font(s_dots, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(s_dots, &font_de_14, 0);
     lv_obj_set_style_text_color(s_dots, lv_color_hex(0x5F6874), 0);
     lv_label_set_text(s_dots, "");
     lv_obj_align(s_dots, LV_ALIGN_TOP_MID, 0, 152);
