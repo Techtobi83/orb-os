@@ -131,4 +131,7 @@ namespace app_shell {
     // Returns "" for an index that does not exist, so a caller cannot walk off the end.
     const char *nameAt(int idx);
     bool        hiddenAt(int idx);
+    // Hide or show an app while running (Settings > Livestream > Show app). It stays
+    // registered, so no index moves; the menu, the swipe and Auto page simply pass it by.
+    void        setHidden(int idx, bool hidden);
 }

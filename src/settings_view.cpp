@@ -77,6 +77,8 @@ extern void  host_set_range_km(float km);
 // The Livestream app's camera URL. Saved to NVS and handed to the running app at once.
 extern void host_livestream_url_get(char *out, size_t n);
 extern void host_livestream_url_set(const char *url);
+extern bool host_livestream_shown();
+extern void host_livestream_set_shown(bool on);
 
 namespace {
     // MODE_LOCATION is a 4-item menu (current / search / recent / back); MODE_RECENT is
@@ -84,7 +86,7 @@ namespace {
     enum Mode { MODE_MENU, MODE_DISPLAY, MODE_BRIGHT, MODE_LOCATION, MODE_RECENT, MODE_SEARCH, MODE_SOUND, MODE_VOLUME, MODE_ABOUT,
                 MODE_WIFI_LIST, MODE_WIFI_PASSWORD, MODE_WIFI_STATUS, MODE_RESET_CONFIRM, MODE_UNITS, MODE_CHIME_SELECT,
                 MODE_THEME_SELECT, MODE_THEME_NOTICE, MODE_DESIGN_SELECT, MODE_DESIGN_NOTICE, MODE_RANGE,
-                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL, MODE_LANGUAGE };
+                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL, MODE_LANGUAGE, MODE_STREAM };
 
     // --- main settings menu ---
     // ITEM_RANGE was added when touch (and with it the on-screen zoom button) was
@@ -99,6 +101,8 @@ namespace {
     // Settings > Language: each language named in itself, so whoever cannot read the current
     // one can still find their own.
     enum { LNG_EN = 0, LNG_DE, LNG_BACK, LNG_COUNT };
+    // Settings > Livestream: the URL, whether the app shows in the menu, Back.
+    enum { STR_URL = 0, STR_SHOW, STR_BACK, STR_COUNT };
     // A Launch Kit push's "Default selection" (was editor-preview-only; now baked
     // in) — which item the main menu opens on, both at first boot and every time
     // the app switcher hands control back to Settings. Out-of-range (a stale
@@ -388,6 +392,10 @@ namespace {
     lv_obj_t *s_themeSelItems[APP_THEME_COUNT + 1] = { nullptr };   // themes + Back
     lv_obj_t *s_themeNoticePage = nullptr;   // "restarting..." heads-up, shown right before the reboot
     lv_obj_t *s_noticeMsg = nullptr;         // its text: theme, or language
+    lv_obj_t *s_strPage   = nullptr;         // Settings > Livestream
+    lv_obj_t *s_strHl     = nullptr;
+    lv_obj_t *s_strItems[STR_COUNT] = { nullptr };
+    int       s_strSel    = 0;
     lv_obj_t *s_langPage  = nullptr;         // Settings > Language
     lv_obj_t *s_langHl    = nullptr;
     lv_obj_t *s_langItems[LNG_COUNT] = { nullptr };
@@ -835,6 +843,16 @@ namespace {
         wheel_layout(s_designItems, design_item_count(), s_designSel, s_designHl);
     }
 
+    void refresh_stream_menu() {
+        char b[40];
+        lv_label_set_text(s_strItems[STR_URL], tr("Stream URL", "Stream-URL"));
+        snprintf(b, sizeof(b), tr("Show app   %s", "App anzeigen   %s"),
+                 host_livestream_shown() ? tr("ON", "AN") : tr("OFF", "AUS"));
+        lv_label_set_text(s_strItems[STR_SHOW], b);
+        lv_label_set_text(s_strItems[STR_BACK], tr("Back", "Zurück"));
+        wheel_layout(s_strItems, STR_COUNT, s_strSel, s_strHl);
+    }
+
     void refresh_language() {
         lv_label_set_text(s_langItems[LNG_EN], "English");
         lv_label_set_text(s_langItems[LNG_DE], "Deutsch");
@@ -1061,6 +1079,7 @@ namespace {
         lv_obj_add_flag(s_themeSelPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_themeNoticePage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_langPage, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_strPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designNoticePage, LV_OBJ_FLAG_HIDDEN);
         if (m == MODE_MENU)          { lv_obj_clear_flag(s_menu, LV_OBJ_FLAG_HIDDEN);    refresh_menu(); }
@@ -1072,6 +1091,7 @@ namespace {
         else if (m == MODE_CHIME_SELECT) { lv_obj_clear_flag(s_chimeSelPage, LV_OBJ_FLAG_HIDDEN); refresh_chimeSelect(); }
         else if (m == MODE_UNITS)    { lv_obj_clear_flag(s_unitsPage, LV_OBJ_FLAG_HIDDEN); refresh_units(); }
         else if (m == MODE_LANGUAGE) { lv_obj_clear_flag(s_langPage, LV_OBJ_FLAG_HIDDEN); refresh_language(); }
+        else if (m == MODE_STREAM)   { lv_obj_clear_flag(s_strPage, LV_OBJ_FLAG_HIDDEN); refresh_stream_menu(); }
         else if (m == MODE_RANGE)    { lv_obj_clear_flag(s_rangePage, LV_OBJ_FLAG_HIDDEN); refresh_range(); }
         else if (m == MODE_VOLUME)   { lv_obj_clear_flag(s_volPage, LV_OBJ_FLAG_HIDDEN); refresh_vol(); }
         else if (m == MODE_ABOUT)    { lv_obj_clear_flag(s_aboutPage, LV_OBJ_FLAG_HIDDEN); refresh_about(); }
@@ -1389,6 +1409,11 @@ void settingsview::onTurn(int delta) {
         if (s_chimeSel >= total) s_chimeSel = total - 1;
         refresh_chimeSelect();
         if (s_chimeSel < chime_shown()) host_chime_preview(s_chimeSel);   // hear it as you browse
+    } else if (s_mode == MODE_STREAM) {
+        s_strSel += step;
+        if (s_strSel < 0) s_strSel = 0;
+        if (s_strSel >= STR_COUNT) s_strSel = STR_COUNT - 1;
+        refresh_stream_menu();
     } else if (s_mode == MODE_LANGUAGE) {
         s_langSel += step;
         if (s_langSel < 0) s_langSel = 0;
@@ -1536,12 +1561,7 @@ void settingsview::onPress() {
         else if (s_sel == ITEM_UNITS) { s_unitsSel = 0; show_page(MODE_UNITS); }
         else if (s_sel == ITEM_LANGUAGE) { s_langSel = lang::get(); show_page(MODE_LANGUAGE); }
         else if (s_sel == ITEM_RANGE) { s_rangeSel = 0; show_page(MODE_RANGE); }
-        else if (s_sel == ITEM_STREAM) {
-            host_livestream_url_get(s_url, sizeof(s_url));
-            if (!s_url[0]) strcpy(s_url, "http://");
-            s_wkbIdx = 0;
-            show_page(MODE_STREAM_URL);
-        }
+        else if (s_sel == ITEM_STREAM) { s_strSel = 0; show_page(MODE_STREAM); }
         else if (s_sel == ITEM_WIFI) { diag::log("wifi: enter (open list)"); start_wifi_scan(); show_page(MODE_WIFI_LIST); }
         else if (s_sel == ITEM_DESIGN) { s_designSel = 0; show_page(MODE_DESIGN_SELECT); }
         else if (s_sel == ITEM_ABOUT) { show_page(MODE_ABOUT); }
@@ -1618,16 +1638,29 @@ void settingsview::onPress() {
             refresh_stream_url();
         } else if (s_wkbIdx == WK_DEL) {                               // backspace; on empty, leave
             if (L > 0) { s_url[L - 1] = 0; refresh_stream_url(); }
-            else       { s_sel = ITEM_STREAM; show_page(MODE_MENU); }
+            else       { s_strSel = STR_URL; show_page(MODE_STREAM); }
         } else if (s_wkbIdx == WK_BACK) {                              // leave, nothing saved
-            s_sel = ITEM_STREAM; show_page(MODE_MENU);
+            s_strSel = STR_URL; show_page(MODE_STREAM);
         } else {                                                       // OK: save and use it now
             // "http://" alone is only the starting text, so saving it means "no URL".
             host_livestream_url_set(strcmp(s_url, "http://") ? s_url : "");
-            s_sel = ITEM_STREAM; show_page(MODE_MENU);
+            s_strSel = STR_URL; show_page(MODE_STREAM);
         }
     } else if (s_mode == MODE_WIFI_STATUS) {
         if (!s_wifiConnecting) show_page(MODE_WIFI_LIST);   // ignore while actively connecting
+    } else if (s_mode == MODE_STREAM) {
+        if (s_strSel == STR_URL) {
+            host_livestream_url_get(s_url, sizeof(s_url));
+            if (!s_url[0]) strcpy(s_url, "http://");
+            s_wkbIdx = 0;
+            show_page(MODE_STREAM_URL);
+        } else if (s_strSel == STR_SHOW) {
+            host_livestream_set_shown(!host_livestream_shown());
+            refresh_stream_menu();
+        } else {                                        // Back -> exit Settings to the app switcher
+            app_shell::setCaptured(false);
+            app_shell::openSwitcher();
+        }
     } else if (s_mode == MODE_LANGUAGE) {
         if (s_langSel < LNG_BACK && s_langSel != lang::get()) {
             // In the language being chosen: it is the one the person can read.
@@ -2260,6 +2293,24 @@ void settingsview::init() {
     lv_obj_set_style_text_color(rangehint, C_GREY, 0);
     lv_obj_set_style_text_font(rangehint, &font_de_14, 0);
     lv_obj_align(rangehint, LV_ALIGN_CENTER, 0, 122);
+
+    // --- Livestream page (Stream URL / Show app / Back) ---
+    s_strPage = lv_obj_create(s_screen);
+    lv_obj_remove_style_all(s_strPage);
+    lv_obj_set_size(s_strPage, SCREEN_W, SCREEN_H); lv_obj_center(s_strPage);
+    lv_obj_clear_flag(s_strPage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *strtitle = lv_label_create(s_strPage);
+    lv_label_set_text(strtitle, "Livestream");
+    lv_obj_set_style_text_color(strtitle, C_DIM, 0);
+    lv_obj_set_style_text_font(strtitle, &font_de_16, 0);
+    lv_obj_align(strtitle, LV_ALIGN_CENTER, 0, -122);
+    reg_hint(strtitle);
+    s_strHl = lv_obj_create(s_strPage);
+    style_highlight(s_strHl);
+    for (int i = 0; i < STR_COUNT; ++i) {
+        s_strItems[i] = lv_label_create(s_strPage);
+        lv_label_set_text(s_strItems[i], "");
+    }
 
     // --- language page (English / Deutsch / Back) ---
     s_langPage = lv_obj_create(s_screen);

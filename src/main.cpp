@@ -984,6 +984,19 @@ static char g_livestreamUrl[LIVECAM_URL_MAX] = "";
 
 void host_livestream_url_get(char *out, size_t n) { snprintf(out, n, "%s", g_livestreamUrl); }
 
+// Settings > Livestream > Show app. Off takes the Livestream out of the app menu (and out of
+// the swipe and Auto page) without forgetting its URL, for an Orb with no camera or one
+// whose camera is only sometimes on. On by default, which is how it always was.
+static bool g_livestreamShown = true;
+bool host_livestream_shown() { return g_livestreamShown; }
+void host_livestream_set_shown(bool on) {
+    g_livestreamShown = on;
+    Preferences p; p.begin("capsuleradar", false); p.putBool("lsShow", on); p.end();
+#if LIVECAM_ENABLED
+    app_shell::setHidden(app_shell::APP_LIVECAM, !on);
+#endif
+}
+
 void host_livestream_url_set(const char *url) {
     if (!url) url = "";
     while (*url == ' ' || *url == '\t') ++url;                  // a pasted URL often
@@ -1005,6 +1018,7 @@ void host_livestream_url_set(const char *url) {
 static void load_livestream_url() {
     Preferences p;
     p.begin("capsuleradar", true);
+    g_livestreamShown = p.getBool("lsShow", true);
     if (p.isKey("lsUrl")) p.getString("lsUrl", g_livestreamUrl, sizeof(g_livestreamUrl));
     else                  snprintf(g_livestreamUrl, sizeof(g_livestreamUrl), "%s", LIVECAM_URL);
     p.end();
@@ -3294,7 +3308,7 @@ void setup() {
     livecamview::init(g_livestreamUrl);
     psram_mark("after livecamview");
     app_shell::add(livecamview::screen(), LIVECAM_NAME, nullptr, nullptr, false,
-                   livecamview::onEnter, livecamview::onExit, false);  // onEnter opens the stream, onExit closes it
+                   livecamview::onEnter, livecamview::onExit, !g_livestreamShown);  // onEnter opens the stream, onExit closes it
 #endif
     settingsview::init();
     psram_mark("after settingsview");
