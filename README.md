@@ -27,6 +27,16 @@ This is TechTobi's fork of Zion Brock's Orb firmware
 is what the fork adds or changes on top. Each item is its own commit, so any of them can be
 taken or left on its own.
 
+<p align="center">
+  <img src="docs/img/fork-clock.jpg" width="440" alt="The Orb on its Iron Orbit stand, showing the Tagesring clock: a chronometer dial with an amber 24-hour day ring, sunrise and sunset times, a balance wheel window and a weekday date window">
+</p>
+
+<p align="center">
+  <img src="docs/img/fork-flight.jpg" width="270" alt="The flight tracker in the Tagesring theme: amber aircraft, sweep and range rings over the road map inside the frame, with a card for a Boeing 737 at 1225 ft">
+  <img src="docs/img/fork-forecast.jpg" width="270" alt="The forecast dial: 20 degrees and overcast, a day ring with sunrise and sunset, and tomorrow's high, low and rain chance, in German">
+  <img src="docs/img/fork-weather.jpg" width="270" alt="An early version of the returning weather radar: precipitation around the home town under the sweep">
+</p>
+
 **New and returning apps**
 - **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself.
 - **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
