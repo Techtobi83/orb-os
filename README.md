@@ -45,6 +45,7 @@ taken or left on its own.
 
 **Getting around**
 - Swipe sideways on the glass to change app (Settings stays knob-only).
+- **Pull down** from the upper half of the glass to open the app menu, as rocking the knob does; it then waits 5 s for the knob.
 - **Auto page**: moves to the next app after a chosen quiet time.
 - **Settings → Language**: English or German for Settings, app names, status lines, weather, the date and the dial; umlauts render everywhere (`src/lang.h`, `src/font_de_*.c`).
 - Place names read as the town only; the start screen holds for 5 s.
