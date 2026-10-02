@@ -34,6 +34,7 @@ void host_wifi_scan_start();                                                    
 void host_factory_reset();                                                       // main.cpp: settings and WiFi gone, then a restart
 int  host_wifi_scan_result(char names[][33], int8_t *rssi, bool *isOpen, int maxN);   // main.cpp
 void host_wifi_restore_saved();                   // main.cpp — put the backed-up network back
+int  host_wifi_known_names(char out[][33], int maxN);   // main.cpp — the last 3 joined, NAMES only
 
 namespace orb_link {
 namespace {
@@ -179,7 +180,11 @@ void cmd_wifi() {
         out_str(",\"host\":");
         out_json_string(ORB_MDNS_ADDR);
     }
-    out_str("}");
+    char known[3][33];
+    const int nk = host_wifi_known_names(known, 3);
+    out_str(",\"known\":[");
+    for (int i = 0; i < nk; ++i) { if (i) out_str(","); out_json_string(known[i]); }
+    out_str("]}");
 #else
     out_str("{\"ok\":true,\"up\":false}");
 #endif

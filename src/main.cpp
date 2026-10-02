@@ -252,6 +252,8 @@ static void applyPolledAircraft(std::vector<Aircraft> &fresh, uint32_t nowMs) {
 }
 
 // ---- networking task (core 0): fetch + parse, never touches the display ----
+static bool wifi_roam_to_known();     // below, with the other WiFi credential code
+static void wifi_known_note_link();
 static void adsb_task(void*) {
     std::vector<Aircraft> fresh;
     bool wasConnected = false;
@@ -311,7 +313,7 @@ static void adsb_task(void*) {
             if (millis() - s_wifiRetryAt > 20000UL) {
                 s_wifiRetryAt = millis();
                 Serial.println("[wifi] disconnected — reconnecting");
-                WiFi.reconnect();
+                if (!wifi_roam_to_known()) WiFi.reconnect();
             }
         }
         if (conn && !wasConnected) {
@@ -319,6 +321,7 @@ static void adsb_task(void*) {
             // and makes RSSI bounce (feed goes stale -> amber bars) even sitting next to the router.
             WiFi.setSleep(false);
             Serial.printf("[adsb] WiFi up, IP %s\n", WiFi.localIP().toString().c_str());
+            wifi_known_note_link();   // the one place a network is remembered; see there
             diag::log("wifi up %s", WiFi.localIP().toString().c_str());
             configTzTime(g_tz.c_str(), "pool.ntp.org", "time.nist.gov");  // local time (web-configurable TZ)
             Serial.println("[web] config: http://" ORB_MDNS_ADDR "/  (or the IP above)");
@@ -1697,6 +1700,134 @@ void host_wifi_saved_ssid(char *out, size_t n) {
 
 void host_wifi_restore_saved() { wifi_restore_credentials(); }
 void host_wifi_forget_backup() { wifi_clear_backup(); }
+
+// ----------------------------- the networks this Orb has joined -------------------------
+//
+// The driver remembers ONE network, so an Orb carried between home and work forgot one to
+// learn the other, and coming back meant scanning and typing a password on the knob again
+// (owner, 2026-10-02: home network fine, guest network at work never joined by itself).
+// This keeps the last three networks it actually got onto, newest first, in our own
+// namespace, and the reconnect loop picks from them by what a scan can see.
+//
+// Written in ONE place, wifi_known_note_link(), called when the link comes up, whichever
+// path brought it there: Settings, the cable, the setup portal, or the driver on its own.
+// So nothing can be remembered that never worked (a mistyped password never gets a link),
+// and no new way of joining can forget to remember, which a call beside each joiner would.
+// Same storage rule as the backup above: the password already sits in plain form in the
+// driver's namespace on this flash, and it is never logged or sent anywhere.
+static constexpr int WIFI_KNOWN_MAX = 3;
+
+static int wifi_known_load(char ssid[][33], char pass[][65]) {
+    Preferences p;
+    p.begin("capsuleradar", true);
+    int n = 0;
+    for (int i = 0; i < WIFI_KNOWN_MAX; ++i) {
+        char ks[10], kp[10];
+        snprintf(ks, sizeof(ks), "wifiK%ds", i);
+        snprintf(kp, sizeof(kp), "wifiK%dp", i);
+        const String s = p.getString(ks, "");
+        if (s.isEmpty()) continue;
+        snprintf(ssid[n], 33, "%s", s.c_str());
+        snprintf(pass[n], 65, "%s", p.getString(kp, "").c_str());
+        ++n;
+    }
+    p.end();
+    return n;
+}
+
+// Move (or add) this network to the front. Writes nothing when it is already there with the
+// same password, which is every reconnect to the usual network: no flash wear for a router
+// that restarts every night.
+static void wifi_known_remember(const char *ssid, const char *pass) {
+    if (!ssid || !ssid[0]) return;
+    if (!pass) pass = "";
+    char s[WIFI_KNOWN_MAX][33], pw[WIFI_KNOWN_MAX][65];
+    const int n = wifi_known_load(s, pw);
+    if (n > 0 && !strcmp(s[0], ssid) && !strcmp(pw[0], pass)) return;
+    char ns[WIFI_KNOWN_MAX][33], np[WIFI_KNOWN_MAX][65];
+    int m = 0;
+    snprintf(ns[m], 33, "%s", ssid);
+    snprintf(np[m], 65, "%s", pass);
+    ++m;
+    for (int i = 0; i < n && m < WIFI_KNOWN_MAX; ++i) {
+        if (!strcmp(s[i], ssid)) continue;             // the same network, moved to the front
+        snprintf(ns[m], 33, "%s", s[i]);
+        snprintf(np[m], 65, "%s", pw[i]);
+        ++m;
+    }
+    Preferences p;
+    p.begin("capsuleradar", false);
+    for (int i = 0; i < WIFI_KNOWN_MAX; ++i) {
+        char ks[10], kp[10];
+        snprintf(ks, sizeof(ks), "wifiK%ds", i);
+        snprintf(kp, sizeof(kp), "wifiK%dp", i);
+        if (i < m) { p.putString(ks, ns[i]); p.putString(kp, np[i]); }
+        else       { p.remove(ks); p.remove(kp); }
+    }
+    p.end();
+    Serial.printf("[wifi] remembered '%s' (%d known)\n", ssid, m);
+}
+
+// The link is up: remember the network it is up on. The password comes from the driver's
+// running config, which is what was actually used to get here.
+static void wifi_known_note_link() {
+    wifi_config_t cur = {};
+    if (esp_wifi_get_config(WIFI_IF_STA, &cur) != ESP_OK) return;
+    if (cur.sta.ssid[0] == '\0') return;
+    if (WiFi.SSID() != String((const char *)cur.sta.ssid)) return;   // config and link disagree
+    wifi_known_remember((const char *)cur.sta.ssid, (const char *)cur.sta.password);
+}
+
+// No link: look for any network we know and go to the strongest one in range. Returns false
+// when nothing is known, or nothing known is in range, and the caller falls back to the
+// driver's own reconnect. A blocking scan, on the network task, which has nothing else to do
+// while there is no network. Auto-reconnect is held off around it, because a station that is
+// "connecting" refuses to scan (see host_wifi_scan_start).
+static bool wifi_roam_to_known() {
+    char s[WIFI_KNOWN_MAX][33], pw[WIFI_KNOWN_MAX][65];
+    const int n = wifi_known_load(s, pw);
+    if (n == 0) return false;
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false /*wifioff*/, false /*eraseap*/);
+    // Refused for a moment after the disconnect, while the driver is still winding down the
+    // attempt it was in the middle of: measured on the bench as "0 seen" on every try until
+    // this waited. Up to about five seconds, then give up until the next round.
+    int found = WIFI_SCAN_FAILED;
+    for (int attempt = 0; attempt < 10 && found < 0; ++attempt) {
+        delay(attempt == 0 ? 300 : 500);
+        found = WiFi.scanNetworks(false /*async*/, false /*hidden*/);
+    }
+    int best = -1;
+    int32_t bestRssi = -1000;
+    for (int i = 0; i < found; ++i) {
+        const String name = WiFi.SSID(i);
+        for (int k = 0; k < n; ++k) {
+            if (name == s[k] && WiFi.RSSI(i) > bestRssi) { best = k; bestRssi = WiFi.RSSI(i); }
+        }
+    }
+    WiFi.scanDelete();
+    WiFi.setAutoReconnect(true);
+    if (best < 0) {
+        Serial.printf("[wifi] none of %d known networks in range (%d seen)\n", n, found < 0 ? 0 : found);
+        return false;
+    }
+    // Persistent on purpose: this network has worked before, and the next boot should try it
+    // first rather than the one that is not here.
+    WiFi.persistent(true);
+    WiFi.begin(s[best], pw[best]);
+    Serial.printf("[wifi] known network '%s' in range (%d dBm) - joining\n", s[best], (int)bestRssi);
+    diag::log("wifi roam %s", s[best]);
+    return true;
+}
+
+// The names, for ?orb wifi. Never the passwords.
+int host_wifi_known_names(char out[][33], int maxN) {
+    char s[WIFI_KNOWN_MAX][33], pw[WIFI_KNOWN_MAX][65];
+    const int n = wifi_known_load(s, pw);
+    int m = 0;
+    for (int i = 0; i < n && m < maxN; ++i) snprintf(out[m++], 33, "%s", s[i]);
+    return m;
+}
 
 // The join, started and then STARTED AGAIN until the driver takes it.
 //
