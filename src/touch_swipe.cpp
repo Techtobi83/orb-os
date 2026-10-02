@@ -30,15 +30,26 @@ Result judge(uint32_t nowMs) {
     const int dx = (int)s_x - (int)s_x0;
     const int dy = (int)s_y - (int)s_y0;
     const uint32_t ms = nowMs - s_t0;
+    const bool quick    = ms <= TOUCH_SWIPE_MAX_MS;
+    // Sideways: the next or previous app.
     const bool far      = abs(dx) >= TOUCH_SWIPE_MIN_PX;
     const bool sideways = abs(dx) >= 2 * abs(dy);
-    const bool quick    = ms <= TOUCH_SWIPE_MAX_MS;
-    const Result r = (far && sideways && quick) ? (dx < 0 ? NEXT : PREV) : NONE;
+    // Down, the way a phone pulls its menu down: the app menu. It has to START in the upper
+    // half of the glass, so the hand that picks the Orb up, or rests on its lower edge,
+    // cannot open the menu by accident; and it must be as clearly vertical as a sideways
+    // swipe must be sideways.
+    const bool farDown  = dy >= TOUCH_SWIPE_MIN_PX;
+    const bool downward = dy >= 2 * abs(dx);
+    const bool fromTop  = s_y0 < SCREEN_H / 2;
+    Result r = NONE;
+    if (quick && far && sideways)                  r = dx < 0 ? NEXT : PREV;
+    else if (quick && farDown && downward && fromTop) r = MENU;
     Serial.printf("[touch] stroke %u,%u -> %u,%u  dx=%d dy=%d  %lu ms  => %s\n",
                   s_x0, s_y0, s_x, s_y, dx, dy, (unsigned long)ms,
-                  r == NEXT ? "next" : r == PREV ? "prev"
-                  : !far ? "ignored (short)" : !sideways ? "ignored (not sideways)"
-                  : "ignored (slow)");
+                  r == NEXT ? "next" : r == PREV ? "prev" : r == MENU ? "menu"
+                  : !quick ? "ignored (slow)"
+                  : (farDown && downward && !fromTop) ? "ignored (pull starts too low)"
+                  : (!far && !farDown) ? "ignored (short)" : "ignored (not straight)");
     return r;
 }
 

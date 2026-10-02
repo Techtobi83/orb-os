@@ -83,6 +83,7 @@ namespace {
     // above free, rather than a second place where input gets dropped on purpose.
     static int s_browseAccum = 0;
     constexpr uint32_t BROWSE_SETTLE_MS = 2000;   // auto-enter the shown app after this idle
+    static uint32_t s_settleMs = BROWSE_SETTLE_MS; // this opening's wait; longer until the first turn
 
     int next_visible(int from, int dir);   // forward decl — defined below, needed by show_overlay above it
     void load(int idx, bool animate, bool forward);   // same, needed by commit_current()
@@ -241,7 +242,7 @@ namespace {
 
     // Runs on the LVGL thread; if the switcher has sat idle long enough, drop into the shown app.
     void browse_tick(lv_timer_t * /*t*/) {
-        if (s_browsing && (millis() - s_browseTouch) >= BROWSE_SETTLE_MS) commit_current();
+        if (s_browsing && (millis() - s_browseTouch) >= s_settleMs) commit_current();
     }
 
     // Next non-hidden app from `from` stepping by `dir` (+1/-1), wrapping around.
@@ -410,6 +411,7 @@ void app_shell::begin() {
 // First turn opens the switcher on the current app; further turns cycle apps.
 void app_shell::browseTurn(int delta) {
     if (!s_count) return;
+    s_settleMs = BROWSE_SETTLE_MS;          // the hand is on the knob now: the ordinary settle
     if (!s_browsing) {
         s_browsing = true;
         s_browseIdx = s_cur;
@@ -453,7 +455,10 @@ void app_shell::browsePress() {
 
 bool app_shell::browsing() { return s_browsing; }
 
-void app_shell::openSwitcher() {
+void app_shell::openSwitcher() { openSwitcher(BROWSE_SETTLE_MS); }
+
+void app_shell::openSwitcher(uint32_t firstWaitMs) {
+    s_settleMs = firstWaitMs > BROWSE_SETTLE_MS ? firstWaitMs : BROWSE_SETTLE_MS;
     s_browseIdx = s_cur;
     if (!s_count) return;
     s_browsing = true;

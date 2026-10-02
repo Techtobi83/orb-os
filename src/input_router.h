@@ -17,6 +17,8 @@ namespace input_router {
     // A sideways swipe on the glass: +1 = next app, -1 = previous. Here rather than at the
     // touch driver so it passes the same modal checks a knob turn does.
     void swipe(int dir);
+    // A pull down on the glass: the app menu, exactly as the rock opens it.
+    void swipeMenu();
     // The Auto page interval ran out: step to the next browsable app, unless something on
     // screen is mid-use. Returns whether it moved.
     bool autoAdvance();

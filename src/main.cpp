@@ -3844,6 +3844,9 @@ void loop() {
             if (t == touch_swipe::NEXT || t == touch_swipe::PREV) {
                 diag::log("swipe %s (app %s)", t == touch_swipe::NEXT ? "next" : "prev", app_shell::name());
                 input_router::swipe(t == touch_swipe::NEXT ? +1 : -1);
+            } else if (t == touch_swipe::MENU) {
+                diag::log("swipe menu (app %s)", app_shell::name());
+                input_router::swipeMenu();
             }
         }
     }

@@ -115,6 +115,10 @@ namespace app_shell {
     void browsePress();
     bool browsing();       // is the switcher overlay currently up?
     void openSwitcher();   // reopen the switcher on the current app (e.g. from a menu's Back)
+    // The same, with a longer first wait before it settles on the app shown: for a menu opened
+    // from the glass, where the hand still has to travel to the knob. The first turn brings
+    // the ordinary settle back.
+    void openSwitcher(uint32_t firstWaitMs);
 
     bool captured();               // does the current app own the knob (menu mode)?
     void setCaptured(bool on);     // an app grabs (true) / releases (false) the knob at runtime

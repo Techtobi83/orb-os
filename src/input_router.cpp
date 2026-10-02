@@ -266,6 +266,22 @@ void input_router::swipe(int dir) {
     app_shell::stepBrowsable(dir);
 }
 
+// A pull down on the glass opens the app menu, and means exactly what the rock means: it
+// works on every screen, Settings and the wind screen included, so the touch glass and the
+// knob tell the same story ("one gesture, one meaning, every screen"). Notices waiting for
+// an answer swallow it like any other input, and the open switcher ignores it: it is already
+// the menu.
+void input_router::swipeMenu() {
+    if (app_shell::count() == 0) return;               // before the roster: early, not lost
+    if (update_ui::awaitingAck()) { update_ui::ackReady(); return; }
+    if (knob_help::showing())     { knob_help::dismiss(); return; }
+#if defined(ESP_PLATFORM)
+    display::markInput(lv_tick_get());
+#endif
+    if (app_shell::browsing()) return;
+    app_shell::openSwitcher(TOUCH_MENU_WAIT_MS);   // the hand still has to reach the knob
+}
+
 // Nobody asked for this move, so it defers to anything that looks like somebody using the
 // Orb: a notice waiting for an answer, the wind screen, the open switcher, and any app that
 // holds the knob (Settings always does; the Flight Tracker does while an aircraft is
