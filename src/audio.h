@@ -23,6 +23,9 @@ uint32_t audio_stack_free_bytes();  // bytes of its stack never touched, for /ta
 bool audio_present();
 void audio_set_volume(int pct);     // 0..100 (software amplitude)
 void audio_set_muted(bool muted);
+// Night mode: silent like mute, but kept apart from it so the owner's own mute setting is
+// never overwritten by the clock. Every playback path checks both, here, in one place.
+void audio_set_night(bool night);
 void audio_play(AudioCue cue);      // non-blocking: signals the playback task
 // Play a caller-owned PCM buffer: 16 kHz, 16-bit, stereo interleaved, the same format the
 // built-in chimes are in. Non-blocking. The buffer must outlive the playback, which is why

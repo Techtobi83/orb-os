@@ -26,6 +26,8 @@ extern uint32_t host_get_idle_ms();
 extern void     host_set_idle_ms(uint32_t ms);
 extern int      host_get_auto_page_min();          // 0 = off
 extern void     host_set_auto_page_min(int minutes);
+extern int      host_get_night_mode();             // 0 off, 1 22-07, 2 always
+extern void     host_set_night_mode(int mode);
 extern void host_set_location(double lat, double lon);              // saves + reboots
 extern void host_set_location_named(const char *name, double lat, double lon);  // + records in recents
 extern bool host_locate_current();                                 // IP-locate + set + reboot; false = failed, didn't reboot
@@ -115,7 +117,8 @@ namespace {
     // person whose themes come from Studio (Zion, 2026-09-14). The palettes themselves
     // stay compiled in as the fallback; only the control is gone. The main menu's Theme
     // entry, which switches between installed designs, is the real one.
-    enum { DSP_SCREEN = 0, DSP_AUTO, DSP_BRIGHT, DSP_BACK, DSP_COUNT };
+    enum { DSP_SCREEN = 0, DSP_AUTO, DSP_NIGHT, DSP_BRIGHT, DSP_BACK, DSP_COUNT };
+    const char *NIGHT_LABELS[] = { "OFF", "22-07", "ON" };
     const uint32_t IDLE_MS[] = { 0, 28800000UL, 14400000UL, 7200000UL, 3600000UL, 1800000UL, 600000UL, 120000UL };
     const char *IDLE_LABELS[] = { "Always on", "8 hours", "4 hours", "2 hours", "1 hour", "30 min", "10 min", "2 min" };
     const int IDLE_N = (int)(sizeof(IDLE_MS) / sizeof(IDLE_MS[0]));
@@ -707,6 +710,8 @@ namespace {
         lv_label_set_text(s_dspItems[DSP_SCREEN], b);
         snprintf(b, sizeof(b), "Auto page   %s", AUTO_LABELS[auto_index()]);
         lv_label_set_text(s_dspItems[DSP_AUTO], b);
+        snprintf(b, sizeof(b), "Night mode   %s", NIGHT_LABELS[host_get_night_mode() % 3]);
+        lv_label_set_text(s_dspItems[DSP_NIGHT], b);
         lv_label_set_text(s_dspItems[DSP_BRIGHT], "Brightness");
         lv_label_set_text(s_dspItems[DSP_BACK], "Back");
         wheel_layout(s_dspItems, DSP_COUNT, s_dspSel, s_dspHl);
@@ -1517,6 +1522,9 @@ void settingsview::onPress() {
             refresh_display();
         } else if (s_dspSel == DSP_AUTO) {              // cycle the auto-page interval
             host_set_auto_page_min(AUTO_MIN[(auto_index() + 1) % AUTO_N]);
+            refresh_display();
+        } else if (s_dspSel == DSP_NIGHT) {             // cycle Off -> 22-07 -> On
+            host_set_night_mode((host_get_night_mode() + 1) % 3);
             refresh_display();
         } else if (s_dspSel == DSP_BRIGHT) {
             s_bri = host_get_brightness();

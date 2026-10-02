@@ -110,6 +110,11 @@ static bool                  g_muted  = false;                       // mute ale
 static int                   g_chimeIdx = 0;                         // selected chime (Settings/NVS)
 static bool                  g_soundRadar = false;                   // on-device: radar pings on/off
 static bool                  g_specialAlert = true;                  // Settings > Sound > Special alert
+// Night mode (Settings > Display): 0 off, 1 automatic 22:00-07:00, 2 always. While it is
+// active the panel runs at half the owner's brightness and the speaker is silent.
+static int                   g_nightMode = 0;
+static bool                  g_nightActive = false;
+static constexpr int         NIGHT_FROM_H = 22, NIGHT_TO_H = 7;
 static bool                  g_soundChime = false;                   // on-device: top-of-hour clock chime
 static int                   g_alertMode = 2;                        // 0=off 1=emergencies 2=new+emergencies (web/NVS)
 static float                 g_proximityKm = 0.0f;                   // proximity alert radius, km (0=off) (web/NVS)
@@ -716,6 +721,7 @@ static void loadSettings() {
     g_muted            = p.getBool("mute", false);
     g_soundRadar       = p.getBool("sndRadar", false);
     g_specialAlert     = p.getBool("sndSpecial", true);
+    g_nightMode        = constrain(p.getInt("nightMode", 0), 0, 2);
     g_soundChime       = p.getBool("sndChime", false);
     g_alertMode        = p.getInt("alertmode", 2);
     g_proximityKm      = p.getFloat("proxkm", 0.0f);
@@ -1040,10 +1046,41 @@ static bool g_idle   = false;   // no touch for a while
 static bool g_updateBright = false;   // an update surface is up (update_ui)
 static void applyBrightness() {
     int b = g_brightnessDay;
+    if (g_nightActive) b = b / 2 < 8 ? 8 : b / 2;               // night mode: half the owner's level
     if (g_idle  && BRIGHTNESS_IDLE  < b) b = BRIGHTNESS_IDLE;   // idle only dims down
     if (g_asleep) b = 0;                                         // face-down -> screen off
     if (g_updateBright) b = 255;                                 // an update outranks both
     display::setBrightness(b);
+}
+
+// Is it night, by the mode and the wall clock? Automatic mode needs a clock that has really
+// been set: an Orb that has not had NTP yet thinks it is 1970 at midnight, and going dark and
+// silent on that guess would be the device acting on something it does not know.
+static bool night_should_be_active() {
+    if (g_nightMode == 2) return true;
+    if (g_nightMode != 1) return false;
+    struct tm ti;
+    if (!orb_local_time(&ti)) return false;
+    return ti.tm_hour >= NIGHT_FROM_H || ti.tm_hour < NIGHT_TO_H;
+}
+
+// Called from the loop every few seconds and whenever the mode changes. Acts only on a
+// change, so the brightness command goes to the panel twice a day, not every pass.
+static void night_update(bool force = false) {
+    const bool want = night_should_be_active();
+    if (want == g_nightActive && !force) return;
+    g_nightActive = want;
+    audio_set_night(want);
+    applyBrightness();
+    Serial.printf("[night] %s\n", want ? "on: half brightness, no sound" : "off");
+    diag::log("night %s", want ? "on" : "off");
+}
+
+int  host_get_night_mode() { return g_nightMode; }
+void host_set_night_mode(int mode) {
+    g_nightMode = constrain(mode, 0, 2);
+    Preferences p; p.begin("capsuleradar", false); p.putInt("nightMode", g_nightMode); p.end();
+    night_update(true);
 }
 
 // update_ui's hook (declared extern there). The transfer counts as activity too, so the
@@ -1379,7 +1416,8 @@ void host_factory_reset() {
 int host_get_brightness() { return g_brightnessDay; }
 void host_set_brightness(int v, bool save) {
     g_brightnessDay = constrain(v, 8, 255);
-    display::setBrightness((uint8_t)g_brightnessDay);   // immediate preview, bypasses idle clamp
+    if (save) applyBrightness();                         // the setting itself: night and idle apply
+    else display::setBrightness((uint8_t)g_brightnessDay);   // a live preview shows the real level
     if (save) {
         Preferences p;
         p.begin("capsuleradar", false);
@@ -3766,6 +3804,10 @@ void loop() {
     wind_notice::animate();
     update_hold_warning();          // countdown while the button is held (see build_hold_warning)
     special_banner_tick();          // take the special-aircraft banner down when its time is up
+    {   // night mode follows the clock; a few seconds' lag at 22:00 is nobody's problem
+        static uint32_t s_nightCheck = 0;
+        if (millis() - s_nightCheck > 5000UL) { s_nightCheck = millis(); night_update(); }
+    }
     if (knob::takeLongPress()) {    // held ~8 s -> manual recovery reboot
         Serial.println("[main] knob long-press -> reboot");
         diag::log("knob long-press -> reboot (app %s)", app_shell::name());

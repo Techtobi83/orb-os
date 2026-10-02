@@ -184,6 +184,8 @@ bool host_sound_special() { return true; }
 void host_sound_set_special(bool) {}
 void host_sound_preview_special() {}
 void host_special_test(bool) {}
+int host_get_night_mode() { return 0; }
+void host_set_night_mode(int) {}
 int  host_chime_count() { return 1; }
 const char *host_chime_name(int) { return "Westminster"; }
 int  host_chime_index() { return 0; }

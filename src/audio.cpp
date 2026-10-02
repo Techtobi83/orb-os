@@ -36,6 +36,10 @@ static const size_t S_BUF_LEN = SR / 2 * 2;   // up to 500 ms, stereo interleave
 static const size_t WRITE_CHUNK = SR / 32 * 2;
 static volatile int  s_vol = 60;     // 0..100
 static volatile bool s_muted = false;
+static volatile bool s_night = false;   // night mode (main.cpp): silent exactly like mute
+// Muted for automatic sounds, by the owner or by the night. The one test every path uses, so
+// a sound added later cannot forget night mode the way a check beside each caller could.
+static inline bool quiet() { return s_muted || s_night; }
 static volatile int  s_cue = -1;
 static SemaphoreHandle_t s_sem = nullptr;
 
@@ -304,7 +308,7 @@ static void play_cue(int cue) {
     const uint32_t myGen = s_gen;
     // Preview (4) and self-test (2) both ignore mute — they're a deliberate "let me hear
     // it" action from the Settings menu, not an automatic notification.
-    if (!s_ok || !s_buf || (s_muted && cue != 2 && cue != 4 && cue != 7 && cue != 9) || s_vol <= 0) return;
+    if (!s_ok || !s_buf || (quiet() && cue != 2 && cue != 4 && cue != 7 && cue != 9) || s_vol <= 0) return;
     int16_t *buf = s_buf;
     const float amp = (s_vol / 100.0f) * 17000.0f;
     digitalWrite(PIN_AUDIO_PA, HIGH);              // enable speaker amp
@@ -437,9 +441,10 @@ bool audio_present() { return s_ok; }
 uint32_t audio_stack_free_bytes() { return s_taskHandle ? uxTaskGetStackHighWaterMark(s_taskHandle) : 0; }
 void audio_set_volume(int pct) { s_vol = constrain(pct, 0, 100); }
 void audio_set_muted(bool m) { s_muted = m; }
+void audio_set_night(bool n) { s_night = n; }
 
 void audio_play(AudioCue cue) {
-    if (!s_ok || s_muted) return;
+    if (!s_ok || quiet()) return;
     // Never truncate the hour. An alert or a new-contact beep landing mid-chime is dropped
     // rather than queued: it is a notification about a moment that has passed by the time the
     // chime ends, and cutting a chime off to deliver it is the worse of the two.
@@ -453,7 +458,7 @@ void audio_play(AudioCue cue) {
 // the buffer belongs to the caller for the life of the theme, so there is nothing to copy and
 // nothing to free here.
 void audio_play_pcm(const uint8_t *pcm, size_t bytes, bool ignoreMute) {
-    if (!s_ok || (s_muted && !ignoreMute) || !pcm || bytes < 2) return;
+    if (!s_ok || (quiet() && !ignoreMute) || !pcm || bytes < 2) return;
     if (s_sustained && !ignoreMute) return;   // see audio_play()
     s_pcm = pcm; s_pcmLen = bytes;
     s_cue = ignoreMute ? 7 : 6;
@@ -482,7 +487,7 @@ void audio_release_pcm(const uint8_t *pcm) {
 }
 
 void audio_play_file(const char *path, bool preview) {
-    if (!s_ok || (s_muted && !preview) || !path || !*path) return;
+    if (!s_ok || (quiet() && !preview) || !path || !*path) return;
     // A preview is somebody in the picker asking to hear this one, so it is the single thing
     // allowed to interrupt a chime already ringing.
     if (s_sustained && !preview) return;
