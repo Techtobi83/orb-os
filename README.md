@@ -38,7 +38,7 @@ taken or left on its own.
 </p>
 
 **New and returning apps**
-- **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself.
+- **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself; Settings → Livestream → Show app takes it out of the menu without forgetting the URL.
 - **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
 - **Weather radar** is back in the build: rain only (no weak echoes), the full round display, 40 km, one frame every five minutes, with the town's name.
 - **News** is compiled out of this build (`NEWS_ENABLED 0`).
@@ -52,6 +52,7 @@ taken or left on its own.
 
 **Flight tracker**
 - **Special aircraft alert**: emergency squawks, rare types (A380, An-124, Beluga, 747, B-52...), rescue helicopters, military and low passes get a sonar ping (or a siren for an emergency) and a banner. Settings → Sound → Special alert.
+- **Tap an aircraft** on the glass to open its card, as turning the knob does; tap empty sky to close it.
 - No feed polling while the tracker is off screen.
 - A failed route lookup is retried instead of being remembered as "no route".
 - Sweep trails fade in their own colour, not through green (RGB565 quantisation).
