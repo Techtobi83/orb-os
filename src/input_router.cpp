@@ -1,4 +1,5 @@
 #include "input_router.h"
+#include "radar_view.h"   // tap(): the Flight Tracker's aircraft under the finger
 #include "knob_help.h"
 #include "wind_notice.h"
 #include "update_ui.h"
@@ -280,6 +281,20 @@ void input_router::swipeMenu() {
 #endif
     if (app_shell::browsing()) return;
     app_shell::openSwitcher(TOUCH_MENU_WAIT_MS);   // the hand still has to reach the knob
+}
+
+// A tap answers a notice waiting for one, as any input does, and otherwise means something
+// only on the Flight Tracker: the aircraft under the finger. Not while the switcher or the
+// wind screen is up, which are the knob's.
+void input_router::tap(int x, int y) {
+    if (app_shell::count() == 0) return;
+    if (update_ui::awaitingAck()) { update_ui::ackReady(); return; }
+    if (knob_help::showing())     { knob_help::dismiss(); return; }
+#if defined(ESP_PLATFORM)
+    display::markInput(lv_tick_get());
+#endif
+    if (wind_notice::showing() || app_shell::browsing()) return;
+    if (app_shell::index() == app_shell::APP_FLIGHT) radar::tapAt(x, y);
 }
 
 // Nobody asked for this move, so it defers to anything that looks like somebody using the

@@ -41,12 +41,16 @@ Result judge(uint32_t nowMs) {
     const bool farDown  = dy >= TOUCH_SWIPE_MIN_PX;
     const bool downward = dy >= 2 * abs(dx);
     const bool fromTop  = s_y0 < SCREEN_H / 2;
+    // A tap: the finger came down and went up again almost where it landed, briefly. Judged
+    // here like everything else, on release, so a finger resting on the glass is never one.
+    const bool tap = abs(dx) <= TOUCH_TAP_MAX_PX && abs(dy) <= TOUCH_TAP_MAX_PX && ms <= TOUCH_TAP_MAX_MS;
     Result r = NONE;
-    if (quick && far && sideways)                  r = dx < 0 ? NEXT : PREV;
+    if (tap)                                       r = TAP;
+    else if (quick && far && sideways)             r = dx < 0 ? NEXT : PREV;
     else if (quick && farDown && downward && fromTop) r = MENU;
     Serial.printf("[touch] stroke %u,%u -> %u,%u  dx=%d dy=%d  %lu ms  => %s\n",
                   s_x0, s_y0, s_x, s_y, dx, dy, (unsigned long)ms,
-                  r == NEXT ? "next" : r == PREV ? "prev" : r == MENU ? "menu"
+                  r == NEXT ? "next" : r == PREV ? "prev" : r == MENU ? "menu" : r == TAP ? "tap"
                   : !quick ? "ignored (slow)"
                   : (farDown && downward && !fromTop) ? "ignored (pull starts too low)"
                   : (!far && !farDown) ? "ignored (short)" : "ignored (not straight)");
@@ -58,6 +62,8 @@ Result judge(uint32_t nowMs) {
 void begin() {
     touch_begin();
 }
+
+void lastTap(int &x, int &y) { x = s_x0; y = s_y0; }   // where it landed, not where it lifted
 
 Result poll(uint32_t nowMs) {
     if (nowMs - s_lastPoll < TOUCH_POLL_MS) return NONE;

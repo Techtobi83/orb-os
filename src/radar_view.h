@@ -81,6 +81,10 @@ void selectNext(int dir);
 void knobEnter();
 void knobPress();
 void knobTurn(int dir);
+// A tap on the glass at screen (x, y): selects the aircraft under the finger and opens its
+// card, as a turn would; a tap on empty sky while one is selected closes it. Returns whether
+// the tap did anything.
+bool tapAt(int x, int y);
 void knobExit();
 
 // Snapshot access for the list / stats views.

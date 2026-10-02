@@ -3101,6 +3101,23 @@ void knobTurn(int dir) {
     s_selActivityMs = lv_tick_get();
 }
 
+// A tap selects the aircraft under the finger. hitTest() has been here since the scope had
+// touch the first time round (40 px catch radius, nearest glyph wins); it only lacked a
+// caller. Same state a turn leaves behind, so the card, the idle timeout and the rock all
+// behave exactly as they do after the knob. A contact the theme masks is not tappable, as it
+// is not in the knob's cycle either: selecting something nobody can see reads as nothing.
+bool tapAt(int x, int y) {
+    const int idx = hitTest(x, y);
+    if (idx >= 0 && !ac_masked(s_acs[idx])) {
+        s_selectMode = true;
+        select(idx);
+        s_selActivityMs = lv_tick_get();
+        return true;
+    }
+    if (s_selectMode) { radar_exit_select(); return true; }   // empty sky: close the card
+    return false;
+}
+
 // onExit: free the decoded plate/overlay PSRAM and drop selection mode so the idle
 // timer can't fire against a scope that's no longer on screen.
 void knobExit() {

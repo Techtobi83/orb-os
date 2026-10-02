@@ -13,7 +13,9 @@ namespace touch_swipe {
         NEXT,        // finger moved right to left: the next app, as a phone would
         PREV,        // finger moved left to right: the previous app
         MENU,        // finger pulled down from the upper half: the app menu, as the rock opens it
+        TAP,         // a short touch that barely moved: where, from lastTap()
     };
     void   begin();                 // after imu_begin(), which brings the I2C bus up
     Result poll(uint32_t nowMs);    // every loop pass; reads the chip every TOUCH_POLL_MS
+    void   lastTap(int &x, int &y);   // screen position of the last TAP
 }

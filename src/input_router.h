@@ -19,6 +19,9 @@ namespace input_router {
     void swipe(int dir);
     // A pull down on the glass: the app menu, exactly as the rock opens it.
     void swipeMenu();
+    // A tap on the glass at screen (x, y). The Flight Tracker selects the aircraft under it;
+    // elsewhere it only counts as activity.
+    void tap(int x, int y);
     // The Auto page interval ran out: step to the next browsable app, unless something on
     // screen is mid-use. Returns whether it moved.
     bool autoAdvance();

@@ -3861,6 +3861,10 @@ void loop() {
             } else if (t == touch_swipe::MENU) {
                 diag::log("swipe menu (app %s)", app_shell::name());
                 input_router::swipeMenu();
+            } else if (t == touch_swipe::TAP) {
+                int tx, ty;
+                touch_swipe::lastTap(tx, ty);
+                input_router::tap(tx, ty);
             }
         }
     }
