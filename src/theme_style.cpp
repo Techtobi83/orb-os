@@ -46,6 +46,7 @@ namespace {
 Clock    s_clock;
 Radar    s_radar;
 Weather  s_weather;
+Livecam  s_livecam;
 Ticker   s_ticker;
 Menu     s_menu;
 Settings s_settings;
@@ -636,6 +637,12 @@ void load() {
         }
     }
     {
+        JsonDocument doc;
+        if (read_style_json(slug, "livecam_style.json", doc)) {
+            if (doc["frameR"].is<int>()) s_livecam.frameR = clampi(doc["frameR"].as<int>(), 0, 233);
+        }
+    }
+    {
         // The weather map's own file. Separate from radar_style.json on purpose: it is a
         // separate app, and the moment the two shared a file somebody's aircraft scope
         // would start changing when they dressed their weather map.
@@ -1171,6 +1178,7 @@ void load() {
 const Clock &clock() { return s_clock; }
 const Radar &radar() { return s_radar; }
 const Weather &weather() { return s_weather; }
+const Livecam &livecam() { return s_livecam; }
 const Ticker  &ticker()  { return s_ticker;  }
 const Menu &menu() { return s_menu; }
 const Settings &settings() { return s_settings; }

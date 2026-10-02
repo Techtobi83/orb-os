@@ -856,6 +856,14 @@ struct Zone {
 //
 // Defaults are deliberately NOT the Flight Tracker's green: a weather map that arrives
 // looking like the aircraft scope is the cross-contamination this struct exists to end.
+// The Livestream's frame (livecam_style.json). A theme that ships livecam_plate.png and sets
+// frameR gets that picture laid OVER the camera everywhere outside a circle of frameR px, so
+// the stream sits inside the design's bezel instead of running to the glass. 0, the default,
+// means no frame at all: a theme that never heard of this is unchanged.
+struct Livecam {
+    int frameR = 0;
+};
+
 struct Weather {
     uint32_t bg              = 0x000000;
     bool     sweepEnabled    = true;
@@ -1499,6 +1507,7 @@ void load();
 const Clock    &clock();
 const Radar     &radar();
 const Weather   &weather();
+const Livecam   &livecam();
 const Ticker    &ticker();
 const Menu      &menu();
 const Settings  &settings();

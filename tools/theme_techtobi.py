@@ -517,6 +517,8 @@ def main():
     # by an inverted keep-out circle in weather_style.json (r = RIM - 19), which puts this
     # plate back everywhere outside it: the weather screen has no rings layer to carry it.
     menu.save(os.path.join(out, "weather_plate.png"), optimize=True)
+    # And the Livestream: livecam_style.json's frameR (the same 211) lays it over the camera.
+    menu.save(os.path.join(out, "livecam_plate.png"), optimize=True)
     rings = Image.new("RGBA", (W * SS, W * SS), (0, 0, 0, 0))
     for r in (68, 136, 204):
         ring(rings, C, C, r, 1.1, LUME, 72)

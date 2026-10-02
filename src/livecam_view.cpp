@@ -34,6 +34,8 @@
 #include <TJpg_Decoder.h>
 #include <esp_heap_caps.h>
 #include "diag_log.h"
+#include "plate_sprite.h"
+#include "theme_style.h"
 
 namespace {
     enum State : uint8_t { ST_IDLE, ST_CONNECTING, ST_LIVE, ST_ERROR };
@@ -446,6 +448,44 @@ namespace {
         return true;
     }
 
+    // The theme's bezel over the picture (theme_style::Livecam). Decoded on entry, released
+    // on exit, like every other screen's plate. Per row, the span INSIDE the circle is the
+    // camera's and everything either side of it is copied from the plate, so the cost is two
+    // memcpy per row rather than a test per pixel.
+    plate_sprite::Plate s_frameArt { "livecam_plate.png", "livecam_frame" };
+    const uint16_t *s_frame = nullptr;     // 466x466 RGB565, or nullptr for no frame
+    int16_t s_inX0[SCREEN_H], s_inX1[SCREEN_H];   // camera span per row; x0 > x1 = all frame
+
+    void frame_prepare() {
+        s_frame = nullptr;
+        const int R = theme_style::livecam().frameR;
+        if (R <= 0) return;
+        const lv_img_dsc_t *art = plate_sprite::get(s_frameArt);
+        if (!art || art->header.w != SCREEN_W || art->header.h != SCREEN_H) return;
+        s_frame = (const uint16_t *)art->data;
+        for (int y = 0; y < SCREEN_H; ++y) {
+            const float dy = y + 0.5f - SCREEN_H / 2.0f;
+            if (fabsf(dy) >= R) { s_inX0[y] = SCREEN_W; s_inX1[y] = -1; continue; }
+            const float half = sqrtf((float)R * R - dy * dy);
+            s_inX0[y] = (int16_t)ceilf(SCREEN_W / 2.0f - half);
+            s_inX1[y] = (int16_t)floorf(SCREEN_W / 2.0f + half - 1.0f);
+        }
+        Serial.printf("[livecam] theme frame over the picture, inside r=%d\n", R);
+    }
+
+    // Lay the bezel over whatever is in the canvas.
+    void frame_apply() {
+        if (!s_frame || !s_pix) return;
+        for (int y = 0; y < SCREEN_H; ++y) {
+            lv_color_t *out = s_pix + (size_t)y * SCREEN_W;
+            const uint16_t *src = s_frame + (size_t)y * SCREEN_W;
+            const int x0 = s_inX0[y], x1 = s_inX1[y];
+            if (x0 > x1) { memcpy(out, src, SCREEN_W * sizeof(uint16_t)); continue; }
+            memcpy(out, src, (size_t)x0 * sizeof(uint16_t));
+            memcpy(out + x1 + 1, src + x1 + 1, (size_t)(SCREEN_W - 1 - x1) * sizeof(uint16_t));
+        }
+    }
+
     void draw_frame(const uint8_t *jpg, uint32_t len) {
         uint16_t w = 0, h = 0;
         if (TJpgDec.getJpgSize(&w, &h, (uint8_t *)jpg, len) != JDR_OK || !w || !h) {
@@ -468,6 +508,7 @@ namespace {
             lv_color_t *out = s_pix + (size_t)y * SCREEN_W;
             for (int x = 0; x < SCREEN_W; ++x) out[x].full = row[s_mapX[x]];
         }
+        frame_apply();
         lv_obj_clear_flag(s_canvas, LV_OBJ_FLAG_HIDDEN);
         lv_obj_invalidate(s_canvas);
     }
@@ -579,8 +620,10 @@ void livecamview::onEnter() {
         lv_canvas_set_buffer(s_canvas, s_pix, SCREEN_W, SCREEN_H, LV_IMG_CF_TRUE_COLOR);
         lv_obj_center(s_canvas);
         lv_canvas_fill_bg(s_canvas, lv_color_black(), LV_OPA_COVER);
-        lv_obj_add_flag(s_canvas, LV_OBJ_FLAG_HIDDEN);   // until the first frame decodes
         lv_obj_move_background(s_canvas);                 // under the status label
+        frame_prepare();
+        if (s_frame) frame_apply();                       // the bezel is there before the picture
+        else lv_obj_add_flag(s_canvas, LV_OBJ_FLAG_HIDDEN);   // until the first frame decodes
     } else {
         diag::log("livecam PSRAM alloc for canvas failed");
     }
@@ -602,6 +645,8 @@ void livecamview::onExit() {
     if (s_canvas) { lv_obj_del(s_canvas); s_canvas = nullptr; }
     if (s_pix)    { heap_caps_free(s_pix); s_pix = nullptr; }
     if (s_src)    { heap_caps_free(s_src); s_src = nullptr; s_srcCap = 0; s_srcW = s_srcH = 0; }
+    s_frame = nullptr;
+    plate_sprite::release(s_frameArt);
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
 }
 
