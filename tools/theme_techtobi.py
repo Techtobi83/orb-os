@@ -164,7 +164,7 @@ def dial_base(R=202):
     return big
 
 
-def plate():
+def plate(title="DAY RING"):
     big = dial_base()
     ring(big, C, C, 118, 0.8, LUME, 90)
 
@@ -224,7 +224,8 @@ def plate():
     fill(big, lambda d: d.rounded_rectangle([P(291, 212), P(387, 254)], radius=8 * SS, fill=255), dimg)
 
     # Two lines, no maker's name (owner, 2026-10-02): the dial says what it is, not whose.
-    text_spaced(big, "TAGESRING", C, 110, 14, 600, LUME, 4.5)
+    # English in clock_plate.png, German in clock_plate_de.png (Settings > Language).
+    text_spaced(big, title, C, 110, 14, 600, LUME, 4.5)
     text_spaced(big, "CHRONOMETER", C, 129, 12, 500, (0xA8, 0xA3, 0x99), 3)
 
     return big.resize((W, W), Image.LANCZOS).convert("RGBA")
@@ -503,6 +504,7 @@ def main():
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
     plate().save(os.path.join(out, "clock_plate.png"), optimize=True)
+    plate("TAGESRING").save(os.path.join(out, "clock_plate_de.png"), optimize=True)
     splash().save(os.path.join(out, "splash.png"), optimize=True)
     # Settings and the app menu stand on the same dial, without the clock's furniture, so the
     # wheel of words reads over it and the screens belong to the clock.
