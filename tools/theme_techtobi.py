@@ -223,8 +223,9 @@ def plate():
     dimg.paste(dg.resize((96 * SS, 42 * SS), Image.BILINEAR), (291 * SS, 212 * SS))
     fill(big, lambda d: d.rounded_rectangle([P(291, 212), P(387, 254)], radius=8 * SS, fill=255), dimg)
 
-    text_spaced(big, "TECHTOBI", C, 108, 15, 600, LUME, 5)
-    text_spaced(big, "TAGESRING · CHRONOMETER", C, 130, 12, 500, (0xA8, 0xA3, 0x99), 2.5)
+    # Two lines, no maker's name (owner, 2026-10-02): the dial says what it is, not whose.
+    text_spaced(big, "TAGESRING", C, 110, 14, 600, LUME, 4.5)
+    text_spaced(big, "CHRONOMETER", C, 129, 12, 500, (0xA8, 0xA3, 0x99), 3)
 
     return big.resize((W, W), Image.LANCZOS).convert("RGBA")
 
