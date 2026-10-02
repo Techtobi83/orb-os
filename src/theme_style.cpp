@@ -133,6 +133,17 @@ void seed_defaults() {
     // App roster. Settings is not here on purpose: it is a system screen, always present.
     s_apps = Apps{};
     s_names = Names{};      // stock labels; theme.json may relabel any of them
+    // The stock labels in the Orb's language. Only the defaults: a theme that names its
+    // apps keeps its names, in whatever language it wrote them.
+    if (lang::de()) {
+        snprintf(s_names.clock,        sizeof(s_names.clock),        "%s", "Uhr");
+        snprintf(s_names.flight,       sizeof(s_names.flight),       "%s", "Flugradar");
+        snprintf(s_names.weather,      sizeof(s_names.weather),      "%s", "Wetterradar");
+        snprintf(s_names.surveillance, sizeof(s_names.surveillance), "%s", "Überwachung");
+        snprintf(s_names.ticker,       sizeof(s_names.ticker),       "%s", "Börsenticker");
+        snprintf(s_names.headlines,    sizeof(s_names.headlines),    "%s", "Nachrichten");
+        snprintf(s_names.settings,     sizeof(s_names.settings),     "%s", "Einstellungen");
+    }
     s_assetsHash = 0;
     s_apps.clock        = (bool)CUSTOM_APP_CLOCK;
     s_apps.flight       = (bool)CUSTOM_APP_FLIGHT;

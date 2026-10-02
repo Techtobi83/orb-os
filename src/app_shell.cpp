@@ -1,4 +1,5 @@
 #include "app_shell.h"
+#include "lang.h"
 #include "display.h"   // markInput — click-to-pixels timing
 #ifdef ARDUINO
 #include <Arduino.h>
@@ -381,7 +382,7 @@ void app_shell::begin() {
     lv_obj_align(s_overlayLabel, LV_ALIGN_CENTER, 0, -12);
 
     s_overlayHint = lv_label_create(s_overlay);
-    lv_label_set_text(s_overlayHint, "push to open");
+    lv_label_set_text(s_overlayHint, tr("push to open", "drücken zum Öffnen"));
     lv_obj_set_style_text_color(s_overlayHint, pal.dim, 0);
     lv_obj_set_style_text_font(s_overlayHint, &font_de_16, 0);
     lv_obj_align(s_overlayHint, LV_ALIGN_CENTER, 0, 40);

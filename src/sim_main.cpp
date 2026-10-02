@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "config.h"
+#include "lang.h"   // tr(), FORECAST_NAME
 #include "radar_view.h"
 #include "radar_sprite.h"   // radar_sprite_release() — Flight Tracker's onExit
 #include "roads_sd.h"       // roads_sd::set_root() — this desktop build's stand-in for the SD card

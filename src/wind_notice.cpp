@@ -1,4 +1,5 @@
 #include "wind_notice.h"
+#include "lang.h"
 
 #include "clock_wind.h"
 #include "clock_view.h"
@@ -340,8 +341,13 @@ void ensure() {
         const int n = clock_wind::turnsForFullWind();
         static const char *WORDS[] = { "one", "two", "three", "four", "five", "six", "seven",
                                        "eight", "nine", "ten" };
+        static const char *WORDS_DE[] = { "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben",
+                                          "acht", "neun", "zehn" };
         char buf[64];
-        if (n >= 1 && n <= 10) snprintf(buf, sizeof(buf), "%s turn%s to the right", WORDS[n - 1], n == 1 ? "" : "s");
+        if (lang::de()) {
+            if (n >= 1 && n <= 10) snprintf(buf, sizeof(buf), "%s Umdrehung%s nach rechts", WORDS_DE[n - 1], n == 1 ? "" : "en");
+            else                   snprintf(buf, sizeof(buf), "%d Umdrehungen nach rechts", n);
+        } else if (n >= 1 && n <= 10) snprintf(buf, sizeof(buf), "%s turn%s to the right", WORDS[n - 1], n == 1 ? "" : "s");
         else                   snprintf(buf, sizeof(buf), "%d turns to the right", n);
         line(s_panel, buf, c.windTurnsSize, c.windTurnsCol, c.windTurnsY, c.windTurnsML, c.windTurnsMR, 2, c.windTurnsOpa);
     }

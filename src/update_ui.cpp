@@ -1,4 +1,5 @@
 #include "update_ui.h"
+#include "lang.h"
 #include "ui.h"   // ui_splash_status(): during boot the splash narrates, not an overlay
 // main.cpp. True while any update surface is up: the screen goes to full brightness no
 // matter how dim the owner keeps it or how long it has sat idle, and comes back to its
@@ -53,7 +54,7 @@ void ensure() {
     // The theme-install states leave this title alone, so it names the theme install. Every
     // other state sets its own. It used to say just "Updating", which had Zion looking for
     // what exactly was being updated.
-    lv_label_set_text(s_title, "Updating theme");
+    lv_label_set_text(s_title, tr("Updating theme", "Design wird aktualisiert"));
     lv_obj_set_style_text_color(s_title, lv_color_white(), 0);
     lv_obj_set_style_text_font(s_title, &font_de_28, 0);
     lv_obj_align(s_title, LV_ALIGN_CENTER, 0, -40);
@@ -66,7 +67,7 @@ void ensure() {
     lv_obj_align(s_sub, LV_ALIGN_CENTER, 0, 6);
 
     s_hint = lv_label_create(s_panel);
-    lv_label_set_text(s_hint, "Keep power connected. Do not unplug.");
+    lv_label_set_text(s_hint, tr("Keep power connected. Do not unplug.", "Strom angeschlossen lassen. Nicht ausstecken."));
     lv_obj_set_style_text_color(s_hint, lv_color_hex(0x5a636e), 0);
     lv_obj_set_style_text_font(s_hint, &font_de_14, 0);
     lv_obj_align(s_hint, LV_ALIGN_CENTER, 0, 60);
@@ -141,8 +142,8 @@ void watchdog_cb(lv_timer_t *) {
     }
     if (!s_interrupted && idle > 12000) {
         s_interrupted = true;
-        lv_label_set_text(s_title, "Update interrupted");
-        lv_label_set_text(s_sub, "The transfer stopped partway.\nNothing was changed. Install again from Orb Studio.");
+        lv_label_set_text(s_title, tr("Update interrupted", "Update abgebrochen"));
+        lv_label_set_text(s_sub, tr("The transfer stopped partway.\nNothing was changed. Install again from Orb Studio.", "Die Übertragung brach ab.\nNichts wurde geändert. Erneut aus Orb Studio installieren."));
 #ifdef ARDUINO
         Serial.println("[update_ui] transfer went quiet for 12s — showing 'interrupted', will clear");
 #endif
@@ -161,12 +162,12 @@ void file_received(const char *name, int count) {
     s_lastActivity = millis();
     if (s_interrupted) {   // the send resumed after a stall: back to the normal state
         s_interrupted = false;
-        lv_label_set_text(s_title, "Updating theme");
+        lv_label_set_text(s_title, tr("Updating theme", "Design wird aktualisiert"));
     }
     char b[96];
     // Numbered, because the thing a person cannot tell from the desk is whether the device
     // is finished or merely between steps. Saying which step it is on says both.
-    snprintf(b, sizeof(b), "Step 1 of 3 - receiving files (%d)\n%.40s", count, name ? name : "");
+    snprintf(b, sizeof(b), tr("Step 1 of 3 - receiving files (%d)\n%.40s", "Schritt 1 von 3 - empfange Dateien (%d)\n%.40s"), count, name ? name : "");
     lv_label_set_text(s_sub, b);
     if (!s_timer) s_timer = lv_timer_create(watchdog_cb, 1000, nullptr);
 #ifdef ARDUINO
@@ -179,14 +180,14 @@ void file_progress(const char *name, int count, uint32_t bytes) {
     s_lastActivity = millis();      // the whole point: this is activity
     if (s_interrupted) {            // a big file mid-flight is not an interruption after all
         s_interrupted = false;
-        lv_label_set_text(s_title, "Updating theme");
+        lv_label_set_text(s_title, tr("Updating theme", "Design wird aktualisiert"));
     }
     // Repainting per 400-byte chunk would spend more time in LVGL than on the transfer.
     static uint32_t s_painted = 0;
     if (millis() - s_painted < 500) return;
     s_painted = millis();
     char b[112];
-    snprintf(b, sizeof(b), "Step 1 of 3 - receiving files (%d)\n%.28s  %lu KB",
+    snprintf(b, sizeof(b), tr("Step 1 of 3 - receiving files (%d)\n%.28s  %lu KB", "Schritt 1 von 3 - empfange Dateien (%d)\n%.28s  %lu KB"),
              count + 1, name ? name : "", (unsigned long)(bytes / 1024));
     lv_label_set_text(s_sub, b);
 }
@@ -196,7 +197,7 @@ void rebooting() {
     // device should not flash an update screen for 400 ms on its way down.
     if (!s_panel) return;
     s_rebootPending = true;
-    lv_label_set_text(s_title, "Restarting");
+    lv_label_set_text(s_title, tr("Restarting", "Neustart"));
     lv_label_set_text(s_sub, "Step 2 of 3 - restarting.\nThe screen goes dark for a few seconds,\nthen it prepares the artwork. Not finished yet.");
 #ifdef ARDUINO
     Serial.println("[update_ui] reboot incoming — told the user to expect the restart");
@@ -207,12 +208,12 @@ void booting(const char *what) {
     // While the boot splash is up, the message goes on the splash rather than over it.
     // A black notice appearing over the title card, then the title card coming back,
     // then the clock, read as the boot restarting. One screen, one line of status.
-    if (ui_splash_status(what ? what : "Starting up")) return;
+    if (ui_splash_status(what ? what : tr("Starting up", "Startet"))) return;
     ensure();
     s_lastActivity = millis();
-    lv_label_set_text(s_title, "Starting up");
+    lv_label_set_text(s_title, tr("Starting up", "Startet"));
     lv_label_set_text(s_sub, what ? what : "");
-    lv_label_set_text(s_hint, "The knob will not answer until this clears.");
+    lv_label_set_text(s_hint, tr("The knob will not answer until this clears.", "Der Knopf reagiert erst, wenn das weg ist."));
     lv_obj_align(s_title, LV_ALIGN_CENTER, 0, -60);
     lv_obj_align(s_sub,   LV_ALIGN_CENTER, 0,   0);
     lv_obj_align(s_hint,  LV_ALIGN_CENTER, 0,  60);
@@ -227,13 +228,13 @@ void ready(bool needsAck) {
     ensure();
     s_lastActivity = millis();
     s_awaitAck = needsAck;
-    lv_label_set_text(s_title, "Ready");
+    lv_label_set_text(s_title, tr("Ready", "Fertig"));
     lv_label_set_text(s_sub, needsAck
-        ? "The update is finished.\nEverything is running."
+        ? tr("The update is finished.\nEverything is running.", "Das Update ist fertig.\nAlles läuft.")
         : "");
     // Names the turn rather than the press, because a turn is the smaller motion and both
     // work. Shorter than the string it replaced, so the two-line layout below is unchanged.
-    lv_label_set_text(s_hint, needsAck ? "Turn the knob to begin." : "");
+    lv_label_set_text(s_hint, needsAck ? tr("Turn the knob to begin.", "Knopf drehen, um zu beginnen.") : "");
     // Checked with `program --readyshot`. One line at 398 px was most of the dial's width
     // and the bezel crowds it; two shorter lines sit comfortably inside the glass.
     lv_obj_align(s_title, LV_ALIGN_CENTER, 0, needsAck ? -62 : 0);
@@ -277,7 +278,7 @@ void firmware_incoming() {
     s_interrupted   = false;
     s_rebootPending = false;
     s_firmwareWait  = true;
-    lv_label_set_text(s_title, "Updating firmware");
+    lv_label_set_text(s_title, tr("Updating firmware", "Firmware wird aktualisiert"));
     // Says the quiet part out loud. The complaint this exists to answer is not "what is it
     // doing", it is "has it locked up", so the screen not changing is named as the expected
     // behaviour rather than left to be inferred from a motionless panel.
@@ -285,7 +286,7 @@ void firmware_incoming() {
                       "This usually takes a minute or two.\n"
                       "The screen will not change while it works.\n"
                       "It restarts itself when it is finished.");
-    lv_label_set_text(s_hint, "Keep it plugged in. Do not unplug.");
+    lv_label_set_text(s_hint, tr("Keep it plugged in. Do not unplug.", "Angeschlossen lassen. Nicht ausstecken."));
     // Re-space for three lines. The shared offsets (-40 / +6 / +60) are set for the two-line
     // subtitle the theme-install states use, and a third line grows the block from its centre
     // in both directions, closing the gap under the title to almost nothing. Checked with

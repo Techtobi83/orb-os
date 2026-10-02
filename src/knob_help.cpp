@@ -1,4 +1,5 @@
 #include "knob_help.h"
+#include "lang.h"
 
 #include <lvgl.h>
 #ifdef ARDUINO
@@ -31,7 +32,7 @@ void ensure() {
     // "activate to the main menu" in his note is a dictation slip for "activate the main
     // menu"; the stray preposition is dropped and nothing else about the sentence is mine.
     lv_obj_t *label = lv_label_create(s_panel);
-    lv_label_set_text(label, "Hint:");
+    lv_label_set_text(label, tr("Hint:", "Tipp:"));
     lv_obj_set_style_text_color(label, lv_color_hex(0x9aa4b0), 0);
     lv_obj_set_style_text_font(label, &font_de_20, 0);
     lv_obj_align(label, LV_ALIGN_CENTER, 0, -84);
@@ -43,9 +44,12 @@ void ensure() {
     lv_label_set_long_mode(body, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(body, 340);
     lv_label_set_text(body,
-                      "To activate the main menu from any app, "
-                      "\"rock\" the knob by quickly turning the "
-                      "knob left and then right");
+                      tr("To activate the main menu from any app, "
+                         "\"rock\" the knob by quickly turning the "
+                         "knob left and then right",
+                         "Das Hauptmenü öffnest du in jeder App, "
+                         "indem du den Knopf \"wippst\": kurz nach "
+                         "links und dann nach rechts drehen"));
     lv_obj_set_style_text_color(body, lv_color_white(), 0);
     lv_obj_set_style_text_font(body, &font_de_20, 0);
     lv_obj_set_style_text_align(body, LV_TEXT_ALIGN_CENTER, 0);
@@ -60,7 +64,7 @@ void ensure() {
     // Ready notice demanding a press and making a screen about the knob being yours again
     // the one screen where most of the knob did nothing.
     lv_obj_t *hint = lv_label_create(s_panel);
-    lv_label_set_text(hint, "turn or push to carry on");
+    lv_label_set_text(hint, tr("turn or push to carry on", "drehen oder drücken zum Weitermachen"));
     lv_obj_set_style_text_color(hint, lv_color_hex(0x5a636e), 0);
     lv_obj_set_style_text_font(hint, &font_de_16, 0);
     lv_obj_align(hint, LV_ALIGN_CENTER, 0, 122);
