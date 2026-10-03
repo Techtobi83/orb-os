@@ -39,9 +39,18 @@ constexpr uint32_t TICK_MS = 40;
 lv_obj_t   *s_scr = nullptr, *s_canvas = nullptr, *s_msg = nullptr;
 lv_timer_t *s_timer = nullptr;
 lv_color_t *s_pix = nullptr;                     // canvas, SCR x SCR
-uint16_t   *s_day = nullptr;                     // TEX_W x TEX_H RGB565
-uint8_t    *s_night = nullptr;                   // TEX_W x TEX_H lights, 0..255
-uint32_t   *s_lut = nullptr;                     // per disc pixel: u0 (10) | v (9) << 10 | z (8) << 19
+// The big tables are held in bands of rows, never in one block. After a few hours of uptime
+// PSRAM had 2.9 MB free but no single 620 KB piece left, and the one-block version said
+// "not enough memory" (owner, 2026-10-03). Bands of ~40 KB fit in whatever is there.
+constexpr int BAND = 32;                          // rows per allocation
+constexpr int NBAND_TEX = (TEX_H + BAND - 1) / BAND, NBAND_SCR = (SCR + BAND - 1) / BAND;
+uint16_t   *s_dayBand[NBAND_TEX] = {};            // TEX_W x TEX_H RGB565
+uint8_t    *s_nightBand[NBAND_TEX] = {};          // TEX_W x TEX_H lights, 0..255
+uint32_t   *s_lutBand[NBAND_SCR] = {};            // per disc pixel: u0 (10) | v (9) << 10 | z (8) << 19
+uint32_t   *s_lutRow[SCR] = {};                   // each row's first entry, inside its band
+bool        s_lutReady = false;
+inline uint16_t *dayRow(int v)   { return s_dayBand[v / BAND] + (v % BAND) * TEX_W; }
+inline uint8_t  *nightRow(int v) { return s_nightBand[v / BAND] + (v % BAND) * TEX_W; }
 int16_t     s_x0[SCR], s_x1[SCR];                // disc span per row; x0 > x1 = none
 int16_t     s_sinLat[TEX_H], s_cosLat[TEX_H];    // Q14, by picture row
 int16_t     s_cosLon[TEX_W];                     // Q14, by column difference
@@ -64,9 +73,9 @@ bool jpg_out(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bmp) {
             const int xx = x + i;
             if (xx < 0 || xx >= TEX_W) continue;
             const uint16_t p = bmp[j * w + i];
-            if (s_target == T_DAY) s_day[yy * TEX_W + xx] = p;
+            if (s_target == T_DAY) dayRow(yy)[xx] = p;
             else {   // the night picture is grey: its green channel is its brightness
-                s_night[yy * TEX_W + xx] = (uint8_t)(((p >> 5) & 0x3F) * 255 / 63);
+                nightRow(yy)[xx] = (uint8_t)(((p >> 5) & 0x3F) * 255 / 63);
             }
         }
     }
@@ -117,8 +126,20 @@ bool build(double homeLat, double homeLon) {
         s_x1[y] = (int16_t)floorf(SCR / 2.0f + half - 1);
         if (s_x1[y] >= s_x0[y]) n += s_x1[y] - s_x0[y] + 1;
     }
-    s_lut = (uint32_t *)heap_caps_malloc((size_t)n * 4, MALLOC_CAP_SPIRAM);
-    if (!s_lut) return false;
+    for (int b = 0; b < NBAND_SCR; ++b) {
+        int cnt = 0;
+        for (int y = b * BAND; y < SCR && y < (b + 1) * BAND; ++y)
+            if (s_x1[y] >= s_x0[y]) cnt += s_x1[y] - s_x0[y] + 1;
+        if (!cnt) continue;
+        s_lutBand[b] = (uint32_t *)heap_caps_malloc((size_t)cnt * 4, MALLOC_CAP_SPIRAM);
+        if (!s_lutBand[b]) return false;
+        uint32_t *q = s_lutBand[b];
+        for (int y = b * BAND; y < SCR && y < (b + 1) * BAND; ++y) {
+            s_lutRow[y] = q;
+            if (s_x1[y] >= s_x0[y]) q += s_x1[y] - s_x0[y] + 1;
+        }
+    }
+    (void)n;
 
     // Single precision throughout: the S3's FPU does float in hardware and double in
     // software, which made the first version of this loop take eight seconds.
@@ -126,9 +147,10 @@ bool build(double homeLat, double homeLon) {
     const float sp = sinf(phi0), cp = cosf(phi0);
     const float lon0 = (float)homeLon + 180.0f;              // degrees, 0..360 at the centre
     const float toCol = TEX_W / 360.0f, toRow = TEX_H / 180.0f, deg = 180.0f / (float)M_PI;
-    int k = 0;
     for (int y = 0; y < SCR; ++y) {
         const float py = -((y + 0.5f) - SCR / 2.0f) / R;
+        uint32_t *row = s_lutRow[y];
+        int k = 0;
         for (int x = s_x0[y]; x <= s_x1[y]; ++x) {
             const float px = ((x + 0.5f) - SCR / 2.0f) / R;
             const float z = sqrtf(fmaxf(0.0f, 1 - px * px - py * py));
@@ -139,9 +161,10 @@ bool build(double homeLat, double homeLon) {
             int u = (int)(lonDeg * toCol); if (u >= TEX_W) u -= TEX_W;
             int v = (int)((90.0f - lat * deg) * toRow); v = v < 0 ? 0 : (v >= TEX_H ? TEX_H - 1 : v);
             const int zq = (int)(z * 255.0f + 0.5f);
-            s_lut[k++] = (uint32_t)u | ((uint32_t)v << 10) | ((uint32_t)zq << 19);
+            row[k++] = (uint32_t)u | ((uint32_t)v << 10) | ((uint32_t)zq << 19);
         }
     }
+    s_lutReady = true;
     return true;
 }
 
@@ -178,21 +201,22 @@ void sun_now(int &sunCol, int16_t &sinS, int16_t &cosS) {
 }
 
 void render(int rot, int sunCol, int16_t sinS, int16_t cosS) {
-    int k = 0;
     for (int y = 0; y < SCR; ++y) {
         if (s_x1[y] < s_x0[y]) continue;
         lv_color_t *out = s_pix + y * SCR;
+        const uint32_t *row = s_lutRow[y];
+        int k = 0;
         for (int x = s_x0[y]; x <= s_x1[y]; ++x) {
-            const uint32_t e = s_lut[k++];
+            const uint32_t e = row[k++];
             int u = (int)(e & 0x3FF) + rot; if (u >= TEX_W) u -= TEX_W;
             const int v = (int)((e >> 10) & 0x1FF), z = (int)(e >> 19);
             int du = u - sunCol; if (du < 0) du += TEX_W;
             const int cosz = ((int)s_sinLat[v] * sinS + (((int)s_cosLat[v] * ((cosS * (int)s_cosLon[du]) >> 14)))) >> 14;
             const int t = s_twi[(cosz >> 6) + 256];                       // daylight 0..255
-            const uint16_t p = s_day[v * TEX_W + u];
+            const uint16_t p = dayRow(v)[u];
             const int r8 = (p >> 11) << 3, g8 = ((p >> 5) & 0x3F) << 2, b8 = (p & 0x1F) << 3;
             const int dg = (t * (90 + ((166 * t) >> 8))) >> 8;           // day: dimmer toward dusk
-            const int nt = 255 - t, L = s_night[v * TEX_W + u];
+            const int nt = 255 - t, L = nightRow(v)[u];
             int r = ((r8 * dg) >> 8) + ((((r8 * 13) >> 8) + L) * nt >> 8);
             int g = ((g8 * dg) >> 8) + ((((g8 * 13) >> 8) + ((L * 209) >> 8)) * nt >> 8);
             int b = ((b8 * dg) >> 8) + ((((b8 * 13) >> 8) + ((L * 140) >> 8)) * nt >> 8);
@@ -206,7 +230,7 @@ void render(int rot, int sunCol, int16_t sinS, int16_t cosS) {
 }
 
 void tick_cb(lv_timer_t *) {
-    if (!s_active || !s_lut) return;
+    if (!s_active || !s_lutReady) return;
     // Glide home: after a few seconds of stillness the spin decays to zero, the short way.
     if (s_offsetDeg != 0 && millis() - s_lastTurnMs > HOME_AFTER_MS) {
         s_offsetDeg *= 0.90f;
@@ -226,9 +250,10 @@ void tick_cb(lv_timer_t *) {
 void release_all() {
     if (s_canvas) { lv_obj_del(s_canvas); s_canvas = nullptr; }
     if (s_pix)   { heap_caps_free(s_pix);   s_pix = nullptr; }
-    if (s_day)   { heap_caps_free(s_day);   s_day = nullptr; }
-    if (s_night) { heap_caps_free(s_night); s_night = nullptr; }
-    if (s_lut)   { heap_caps_free(s_lut);   s_lut = nullptr; }
+    for (auto &b : s_dayBand)   if (b) { heap_caps_free(b); b = nullptr; }
+    for (auto &b : s_nightBand) if (b) { heap_caps_free(b); b = nullptr; }
+    for (auto &b : s_lutBand)   if (b) { heap_caps_free(b); b = nullptr; }
+    s_lutReady = false;
 }
 
 void show_msg(const char *t) {
@@ -261,9 +286,16 @@ void onEnter(double homeLat, double homeLon) {
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     s_offsetDeg = 0; s_drawnRot = s_drawnSun = INT32_MIN;
     s_pix   = (lv_color_t *)heap_caps_malloc((size_t)SCR * SCR * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    s_day   = (uint16_t *)heap_caps_malloc((size_t)TEX_W * TEX_H * 2, MALLOC_CAP_SPIRAM);
-    s_night = (uint8_t *)heap_caps_malloc((size_t)TEX_W * TEX_H, MALLOC_CAP_SPIRAM);
-    if (!s_pix || !s_day || !s_night) {
+    bool ok = s_pix != nullptr;
+    for (int b = 0; ok && b < NBAND_TEX; ++b) {
+        s_dayBand[b]   = (uint16_t *)heap_caps_malloc((size_t)TEX_W * BAND * 2, MALLOC_CAP_SPIRAM);
+        s_nightBand[b] = (uint8_t *)heap_caps_malloc((size_t)TEX_W * BAND, MALLOC_CAP_SPIRAM);
+        ok = s_dayBand[b] && s_nightBand[b];
+    }
+    if (!ok) {
+        Serial.printf("[globe] no PSRAM: free %u, largest block %u\n",
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
         release_all();
         diag::log("globe: no PSRAM");
         show_msg(tr("Not enough memory", "Nicht genug Speicher"));
@@ -276,6 +308,9 @@ void onEnter(double homeLat, double homeLon) {
         return;
     }
     if (!build(homeLat, homeLon)) {
+        Serial.printf("[globe] no PSRAM for the projection: free %u, largest block %u\n",
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
         release_all();
         show_msg(tr("Not enough memory", "Nicht genug Speicher"));
         return;
