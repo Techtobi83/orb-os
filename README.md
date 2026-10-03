@@ -32,9 +32,10 @@ taken or left on its own.
 </p>
 
 <p align="center">
-  <img src="docs/img/fork-flight.jpg" width="270" alt="The flight tracker in the Tagesring theme: amber aircraft, sweep and range rings over the road map inside the frame, with a card for a Boeing 737 at 1225 ft">
-  <img src="docs/img/fork-forecast.jpg" width="270" alt="The forecast dial: 20 degrees and overcast, a day ring with sunrise and sunset, and tomorrow's high, low and rain chance, in German">
-  <img src="docs/img/fork-weather.jpg" width="270" alt="An early version of the returning weather radar: precipitation around the home town under the sweep">
+  <img src="docs/img/fork-flight.jpg" width="205" alt="The flight tracker in the Tagesring theme: amber aircraft, sweep and range rings over the road map inside the frame, with a card for a Boeing 737 at 1225 ft">
+  <img src="docs/img/fork-forecast.jpg" width="205" alt="The forecast dial: 20 degrees and overcast, a day ring with sunrise and sunset, and tomorrow's high, low and rain chance, in German">
+  <img src="docs/img/fork-weather.jpg" width="205" alt="An early version of the returning weather radar: precipitation around the home town under the sweep">
+  <img src="docs/img/fork-earth.jpg" width="205" alt="The Earth app: the globe from space over Europe and Africa in daylight, with a thin blue atmosphere at the edge of the round display">
 </p>
 
 **New and returning apps**
