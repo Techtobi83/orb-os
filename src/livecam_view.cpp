@@ -410,8 +410,10 @@ namespace {
     uint16_t   *s_src    = nullptr;   // decoded frame, s_srcW x s_srcH; lives with the canvas
     size_t      s_srcCap = 0;         // pixels s_src can hold
     int         s_srcW   = 0, s_srcH = 0;
-    int16_t     s_mapX[SCREEN_W];     // canvas column -> s_src column
-    int16_t     s_mapY[SCREEN_H];     // canvas row    -> s_src row
+    // The two lookup tables (1.9 KB) live in PSRAM beside s_src and only while the app is
+    // open; as file-scope arrays they were internal RAM for the life of the firmware.
+    int16_t    *s_mapX   = nullptr;   // canvas column -> s_src column, SCREEN_W entries
+    int16_t    *s_mapY   = nullptr;   // canvas row    -> s_src row, SCREEN_H entries
 
     bool jpg_out(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bmp) {
         for (int j = 0; j < h; ++j) {
@@ -427,6 +429,9 @@ namespace {
     // Size the scratch buffer and the lookup tables for frames of w x h. Only when it changes.
     bool prepare_for(int w, int h) {
         if (w == s_srcW && h == s_srcH && s_src) return true;
+        if (!s_mapX) s_mapX = (int16_t *)heap_caps_malloc((SCREEN_W + SCREEN_H) * sizeof(int16_t), MALLOC_CAP_SPIRAM);
+        if (!s_mapX) { diag::log("livecam PSRAM alloc for the maps failed"); return false; }
+        s_mapY = s_mapX + SCREEN_W;
         const size_t need = (size_t)w * h;
         if (need > s_srcCap) {
             if (s_src) heap_caps_free(s_src);
@@ -651,6 +656,7 @@ void livecamview::onExit() {
     if (s_canvas) { lv_obj_del(s_canvas); s_canvas = nullptr; }
     if (s_pix)    { heap_caps_free(s_pix); s_pix = nullptr; }
     if (s_src)    { heap_caps_free(s_src); s_src = nullptr; s_srcCap = 0; s_srcW = s_srcH = 0; }
+    if (s_mapX)   { heap_caps_free(s_mapX); s_mapX = s_mapY = nullptr; }
     s_frame = nullptr;
     plate_sprite::release(s_frameArt);
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);

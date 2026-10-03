@@ -386,12 +386,23 @@ static void adsb_task(void*) {
             if (onScreen && !s_wasOnScreen) lastPoll = 0;      // just opened: ask now
             if (!onScreen && s_wasOnScreen) g_adsb.close();    // just left: give the socket back
             s_wasOnScreen = onScreen;
-            const bool warm = onScreen;
+            // The special-aircraft alert promises any screen, and it learns about aircraft only
+            // from this feed, which otherwise runs only while the tracker is up: off screen the
+            // alert never fired (found in review, 2026-10-03). So with the alert on, the feed
+            // also asks once a minute in the background, and gives the socket back after each
+            // ask. Not while the Livestream plays, which needs that internal RAM itself.
+#if LIVECAM_ENABLED
+            const bool camOpen = app_shell::index() == app_shell::APP_LIVECAM;
+#else
+            const bool camOpen = false;
+#endif
+            const bool bgAlert = !onScreen && g_specialAlert && !camOpen;
+            const bool warm = onScreen || bgAlert;
             const uint32_t baseInterval =
                 g_pollOverrideMs ? g_pollOverrideMs
               : g_onBattery      ? POLL_INTERVAL_BATTERY_MS
                                  : POLL_INTERVAL_MS;
-            const uint32_t pollInterval = baseInterval + adsbBackoffMs;
+            const uint32_t pollInterval = (onScreen ? baseInterval : SPECIAL_BG_POLL_MS) + adsbBackoffMs;
             // g_locationSet: no centre, no query. The coordinates are 0,0 until the network
             // lookup or Settings supplies a real one, and asking a free non-commercial API
             // every few seconds for the traffic over the Gulf of Guinea is a request nobody
@@ -421,7 +432,9 @@ static void adsb_task(void*) {
                 // answered there. Nothing about it reaches the card, and this device can no
                 // longer invent an aircraft under any circumstances. A theme.json that still
                 // carries the old flag is simply ignored, which is why the parse went too.
-                if (g_adsb.poll(fresh)) {
+                const bool okPoll = g_adsb.poll(fresh);
+                if (!onScreen) g_adsb.close();               // a background ask keeps no socket
+                if (okPoll) {
                     Serial.printf("[adsb] fetched %u aircraft\n", (unsigned)fresh.size());
                     failCount = 0;
                     adsbBackoffMs = 0;                        // recovered: back to real-time polling

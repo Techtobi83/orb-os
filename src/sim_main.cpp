@@ -681,6 +681,11 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
     app_shell::add(forecastview::screen(), FORECAST_NAME, nullptr, nullptr, false,
                    forecastview::onEnter, forecastview::onExit, false);
 #endif
+#if GLOBE_ENABLED
+    // The Earth app is device-only (PSRAM, TJpgDec, the SD card); the simulator holds its
+    // slot with an empty screen so every app after it keeps its index (app_shell::Slot).
+    app_shell::add(lv_obj_create(NULL), GLOBE_NAME, nullptr, nullptr, false, nullptr, nullptr, false);
+#endif
 #if !APPS_LAUNCH_ONE
     app_shell::add(survScreen,  theme_style::names().surveillance, nullptr, nullptr, false, nullptr, nullptr, !theme_style::apps().surveillance);
 #else
@@ -712,6 +717,11 @@ static void sim_register_apps(lv_obj_t *radarScreen) {
     app_shell::add(tickerview::screen(), theme_style::names().ticker,
                    tickerview::onPress, tickerview::onTurn, false,
                    tickerview::onEnter, tickerview::onExit, !theme_style::apps().ticker);
+#endif
+#if LIVECAM_ENABLED
+    // The Livestream is device-only too (a network camera, PSRAM JPEG buffers); its slot is
+    // held the same way, or Settings lands one index early (app_shell::Slot).
+    app_shell::add(lv_obj_create(NULL), LIVECAM_NAME, nullptr, nullptr, false, nullptr, nullptr, false);
 #endif
     // After the Ticker, matching main.cpp. The selftests below address apps by index, so the
     // two lineups have to stay in the same order or the simulator stops standing in for the

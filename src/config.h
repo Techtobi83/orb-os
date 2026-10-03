@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.31.4"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.31.6"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -85,6 +85,7 @@
 #define TOUCH_SWIPE_MIN_PX  90     // sideways travel a swipe needs, of the 466 px glass
 #define TOUCH_SWIPE_MAX_MS  700    // slower than this is a drag, not a swipe
 #define TOUCH_MENU_WAIT_MS  5000   // the menu a pull-down opens waits this long for the knob (2 s after a turn)
+#define SPECIAL_BG_POLL_MS  60000UL  // off the Flight Tracker, the special alert's background feed ask
 #define TOUCH_TAP_MAX_PX    24     // a tap moves less than this either way...
 #define TOUCH_TAP_MAX_MS    500    // ...and lifts within this
 

@@ -148,6 +148,10 @@ bool edge_usable(uint8_t i) {
 void learn_edge() {
     IPAddress ip;
     if (!WiFi.hostByName(ADSB_PRIMARY_HOST, ip)) return;
+    // A failed lookup can still come back "successful" with 0.0.0.0, and the pool kept it for
+    // good: from then on one of the two tries of EVERY poll was spent connecting to nothing,
+    // which turned a slow spell at adsb.lol into a run of failed polls (seen 2026-10-03).
+    if (ip == IPAddress(0, 0, 0, 0)) return;
     for (uint8_t i = 0; i < s_edgeN; ++i) if (s_edge[i] == ip) return;
     if (s_edgeN < ADSB_EDGE_POOL) {
         s_edge[s_edgeN++] = ip;
@@ -262,8 +266,8 @@ bool AdsbClient::poll(std::vector<Aircraft>& out) {
         // busy, which is exactly the case the rotation was built for and must stay in it.
         if (_lastStatus <= 0) {
             s_edgeNextOkMs[idx] = millis() + EDGE_COOLDOWN_MS;
-            Serial.printf("[adsb] %s did not answer; resting it for %lu min\n",
-                          s_edge[idx].toString().c_str(), (unsigned long)(EDGE_COOLDOWN_MS / 60000UL));
+            Serial.printf("[adsb] %s did not answer; resting it for %lu s\n",
+                          s_edge[idx].toString().c_str(), (unsigned long)(EDGE_COOLDOWN_MS / 1000UL));
         }
     }
     // Every door is on cooldown: forget the cooldowns rather than sit out the outage. Being
