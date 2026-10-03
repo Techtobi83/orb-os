@@ -86,9 +86,10 @@ taken or left on its own.
 
 For an Orb built on the Waveshare ESP32-S3-Touch-AMOLED-1.75. You need a USB-C cable and Chrome or Edge on a computer; nothing to install.
 
-1. **Download** from the [latest release](https://github.com/Techtobi83/orb-os/releases/latest), under *Assets*: `orb-os-<version>-full.bin`, and if you want the theme, `theme-tagesring-techtobi.zip`.
+1. **Download** from the [latest release](https://github.com/Techtobi83/orb-os/releases/latest), under *Assets*: `orb-os-<version>-full.bin`, `earth-images.zip` for the Earth app, and if you want the theme, `theme-tagesring-techtobi.zip`.
 2. **Flash in the browser:** open Espressif's web flasher at <https://espressif.github.io/esptool-js/>, plug the Orb in, click **Connect** and pick its port. Set *Flash Address* to **`0x0`**, choose `orb-os-<version>-full.bin`, click **Program**, and wait a minute or two. The Orb restarts and asks for WiFi.
 3. **Theme (optional):** unzip onto the microSD card so it holds `/themes/techtobi/`, put the card in, and choose **Tagesring** under Settings → Theme. The first start after that takes about 15 s while the artwork is prepared.
+4. **Earth app:** unzip `earth-images.zip` onto the microSD card so it holds `/earth/day.jpg` and `/earth/night.jpg`. Without them the Earth screen says the pictures are missing; everything else works.
 
 Good to know:
 - The full image **erases WiFi and settings**; set them up once afterwards.
