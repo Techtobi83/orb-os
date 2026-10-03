@@ -47,14 +47,29 @@ constexpr int NBAND_TEX = (TEX_H + BAND - 1) / BAND, NBAND_SCR = (SCR + BAND - 1
 uint16_t   *s_dayBand[NBAND_TEX] = {};            // TEX_W x TEX_H RGB565
 uint8_t    *s_nightBand[NBAND_TEX] = {};          // TEX_W x TEX_H lights, 0..255
 uint32_t   *s_lutBand[NBAND_SCR] = {};            // per disc pixel: u0 (10) | v (9) << 10 | z (8) << 19
-uint32_t   *s_lutRow[SCR] = {};                   // each row's first entry, inside its band
 bool        s_lutReady = false;
 inline uint16_t *dayRow(int v)   { return s_dayBand[v / BAND] + (v % BAND) * TEX_W; }
 inline uint8_t  *nightRow(int v) { return s_nightBand[v / BAND] + (v % BAND) * TEX_W; }
-int16_t     s_x0[SCR], s_x1[SCR];                // disc span per row; x0 > x1 = none
-int16_t     s_sinLat[TEX_H], s_cosLat[TEX_H];    // Q14, by picture row
-int16_t     s_cosLon[TEX_W];                     // Q14, by column difference
-uint8_t     s_twi[513];                          // cos(zenith) >> 6 (+256) -> daylight 0..255
+// The small tables, ~7 KB together, in ONE PSRAM block that exists only while the app is
+// open. As file-scope arrays they sat in internal RAM for the life of the firmware, on a
+// chip where internal RAM is the scarcest thing there is: with them, a few hours of uptime
+// left 2.5 KB as the largest free internal block and the weather map's tile download
+// failed ("RainViewer is not answering", owner, 2026-10-03).
+struct Tables {
+    uint32_t *lutRow[SCR];                       // each row's first entry, inside its band
+    int16_t   x0[SCR], x1[SCR];                  // disc span per row; x0 > x1 = none
+    int16_t   sinLat[TEX_H], cosLat[TEX_H];      // Q14, by picture row
+    int16_t   cosLon[TEX_W];                     // Q14, by column difference
+    uint8_t   twi[513];                          // cos(zenith) >> 6 (+256) -> daylight 0..255
+};
+Tables *T = nullptr;
+#define s_lutRow (T->lutRow)
+#define s_x0     (T->x0)
+#define s_x1     (T->x1)
+#define s_sinLat (T->sinLat)
+#define s_cosLat (T->cosLat)
+#define s_cosLon (T->cosLon)
+#define s_twi    (T->twi)
 
 float    s_offsetDeg = 0;                         // the knob's spin, away from home
 uint32_t s_lastTurnMs = 0;
@@ -254,6 +269,7 @@ void release_all() {
     for (auto &b : s_nightBand) if (b) { heap_caps_free(b); b = nullptr; }
     for (auto &b : s_lutBand)   if (b) { heap_caps_free(b); b = nullptr; }
     s_lutReady = false;
+    if (T) { heap_caps_free(T); T = nullptr; }
 }
 
 void show_msg(const char *t) {
@@ -286,7 +302,8 @@ void onEnter(double homeLat, double homeLon) {
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     s_offsetDeg = 0; s_drawnRot = s_drawnSun = INT32_MIN;
     s_pix   = (lv_color_t *)heap_caps_malloc((size_t)SCR * SCR * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    bool ok = s_pix != nullptr;
+    T = (Tables *)heap_caps_calloc(1, sizeof(Tables), MALLOC_CAP_SPIRAM);
+    bool ok = s_pix != nullptr && T != nullptr;
     for (int b = 0; ok && b < NBAND_TEX; ++b) {
         s_dayBand[b]   = (uint16_t *)heap_caps_malloc((size_t)TEX_W * BAND * 2, MALLOC_CAP_SPIRAM);
         s_nightBand[b] = (uint8_t *)heap_caps_malloc((size_t)TEX_W * BAND, MALLOC_CAP_SPIRAM);

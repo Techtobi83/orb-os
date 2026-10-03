@@ -25,15 +25,19 @@ bool net_fetch_psram(const char *url, const char *userAgent,
     // was here. An https:// URL still gets a secure client and will still fail, which is
     // honest, and the log below says which one it was.
     const bool secure = !strncmp(url, "https://", 8);
+    // The secure client only when the URL asks for one. Built on every call, it took its
+    // TLS context out of internal RAM even for plain http:// downloads (all of them, on this
+    // board), on a heap where the largest free internal block can be down to 2-3 KB.
     WiFiClient plain;
-    WiFiClientSecure tls;
-    if (secure) tls.setInsecure();            // hobby device (matches the other clients)
-    WiFiClient &cli = secure ? static_cast<WiFiClient &>(tls) : plain;
+    WiFiClientSecure *tls = secure ? new WiFiClientSecure() : nullptr;
+    if (tls) tls->setInsecure();              // hobby device (matches the other clients)
+    struct Del { WiFiClientSecure *p; ~Del() { delete p; } } del{tls};
+    WiFiClient &cli = tls ? static_cast<WiFiClient &>(*tls) : plain;
     HTTPClient http;
     http.setReuse(false);
     http.setConnectTimeout(connectTimeoutMs);
     http.setTimeout(totalTimeoutMs);
-    if (!http.begin(cli, url)) return false;
+    if (!http.begin(cli, url)) { Serial.printf("[net] begin failed: %s\n", url); return false; }
     if (userAgent) http.setUserAgent(userAgent);
 
     const int code = http.GET();
@@ -78,7 +82,16 @@ bool net_fetch_psram(const char *url, const char *userAgent,
         }
     }
     http.end();
-    if (got == 0) { if (buf) heap_caps_free(buf); return false; }
+    if (got == 0) {
+        // Said out loud: this used to fail in silence, and "the service is not answering" on
+        // screen was then the only clue, when the service had answered and the Orb could not
+        // take the reply. Internal heap is what a socket's buffers come out of.
+        Serial.printf("[net] no body (len %d): internal heap %u free, largest %u: %s\n", len,
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), url);
+        if (buf) heap_caps_free(buf);
+        return false;
+    }
     *out = buf; *outLen = got;
     return true;
 }

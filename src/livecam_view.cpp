@@ -455,7 +455,17 @@ namespace {
     // memcpy per row rather than a test per pixel.
     plate_sprite::Plate s_frameArt { "livecam_plate.png", "livecam_frame" };
     const uint16_t *s_frame = nullptr;     // 466x466 RGB565, or nullptr for no frame
-    int16_t s_inX0[SCREEN_H], s_inX1[SCREEN_H];   // camera span per row; x0 > x1 = all frame
+    int     s_frameR = 0;                  // the camera circle's radius
+    // The camera's span on row y. Worked out per row, per frame (466 square roots, nothing
+    // next to a JPEG decode), not kept in a table: a table here was 1.8 KB of internal RAM
+    // held for the life of the firmware, and internal RAM is what the downloads run out of.
+    inline void span(int y, int &x0, int &x1) {
+        const float dy = y + 0.5f - SCREEN_H / 2.0f;
+        if (fabsf(dy) >= s_frameR) { x0 = SCREEN_W; x1 = -1; return; }
+        const float half = sqrtf((float)s_frameR * s_frameR - dy * dy);
+        x0 = (int)ceilf(SCREEN_W / 2.0f - half);
+        x1 = (int)floorf(SCREEN_W / 2.0f + half - 1.0f);
+    }
 
     void frame_prepare() {
         s_frame = nullptr;
@@ -464,13 +474,7 @@ namespace {
         const lv_img_dsc_t *art = plate_sprite::get(s_frameArt);
         if (!art || art->header.w != SCREEN_W || art->header.h != SCREEN_H) return;
         s_frame = (const uint16_t *)art->data;
-        for (int y = 0; y < SCREEN_H; ++y) {
-            const float dy = y + 0.5f - SCREEN_H / 2.0f;
-            if (fabsf(dy) >= R) { s_inX0[y] = SCREEN_W; s_inX1[y] = -1; continue; }
-            const float half = sqrtf((float)R * R - dy * dy);
-            s_inX0[y] = (int16_t)ceilf(SCREEN_W / 2.0f - half);
-            s_inX1[y] = (int16_t)floorf(SCREEN_W / 2.0f + half - 1.0f);
-        }
+        s_frameR = R;
         Serial.printf("[livecam] theme frame over the picture, inside r=%d\n", R);
     }
 
@@ -480,7 +484,8 @@ namespace {
         for (int y = 0; y < SCREEN_H; ++y) {
             lv_color_t *out = s_pix + (size_t)y * SCREEN_W;
             const uint16_t *src = s_frame + (size_t)y * SCREEN_W;
-            const int x0 = s_inX0[y], x1 = s_inX1[y];
+            int x0, x1;
+            span(y, x0, x1);
             if (x0 > x1) { memcpy(out, src, SCREEN_W * sizeof(uint16_t)); continue; }
             memcpy(out, src, (size_t)x0 * sizeof(uint16_t));
             memcpy(out + x1 + 1, src + x1 + 1, (size_t)(SCREEN_W - 1 - x1) * sizeof(uint16_t));
