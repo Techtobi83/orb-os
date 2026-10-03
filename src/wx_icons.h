@@ -3,26 +3,23 @@
 #include "lvgl.h"
 
 extern const lv_img_dsc_t wxi_cloud_l;
-#define WXI_CLOUD_L_X 51   /* offset inside the 384 px frame */
-#define WXI_CLOUD_L_Y 81
+#define WXI_CLOUD_L_X 95   /* offset inside the 384 px frame */
+#define WXI_CLOUD_L_Y 73
 extern const lv_img_dsc_t wxi_sun_l;
-#define WXI_SUN_L_X 12   /* offset inside the 384 px frame */
-#define WXI_SUN_L_Y 12
+#define WXI_SUN_L_X 68   /* offset inside the 384 px frame */
+#define WXI_SUN_L_Y 26
 extern const lv_img_dsc_t wxi_moon_l;
-#define WXI_MOON_L_X 69   /* offset inside the 384 px frame */
-#define WXI_MOON_L_Y 71
+#define WXI_MOON_L_X 107   /* offset inside the 384 px frame */
+#define WXI_MOON_L_Y 67
 extern const lv_img_dsc_t wxi_drops_l;
-#define WXI_DROPS_L_X 105   /* offset inside the 384 px frame */
-#define WXI_DROPS_L_Y 206
+#define WXI_DROPS_L_X 108   /* offset inside the 384 px frame */
+#define WXI_DROPS_L_Y 210
 extern const lv_img_dsc_t wxi_snow_l;
-#define WXI_SNOW_L_X 114   /* offset inside the 384 px frame */
-#define WXI_SNOW_L_Y 213
+#define WXI_SNOW_L_X 126   /* offset inside the 384 px frame */
+#define WXI_SNOW_L_Y 212
 extern const lv_img_dsc_t wxi_bolt_l;
-#define WXI_BOLT_L_X 157   /* offset inside the 384 px frame */
-#define WXI_BOLT_L_Y 195
-extern const lv_img_dsc_t wxi_fog_l;
-#define WXI_FOG_L_X 67   /* offset inside the 384 px frame */
-#define WXI_FOG_L_Y 316
+#define WXI_BOLT_L_X 158   /* offset inside the 384 px frame */
+#define WXI_BOLT_L_Y 185
 extern const lv_img_dsc_t wxi_fogbank_l;
 #define WXI_FOGBANK_L_X 70   /* offset inside the 384 px frame */
 #define WXI_FOGBANK_L_Y 106

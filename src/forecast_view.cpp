@@ -38,7 +38,11 @@ static_assert(CAP_END_DX * CAP_END_DX + CAP_END_DY * CAP_END_DY <= CAP_CLEAR * C
               "tomorrow's capsule reaches the ring: the sun/moon marker would cover it");
 constexpr uint32_t COL_TEXT   = 0xF2F0EA, COL_TEXT2 = 0xE4E1D9, COL_DIM = 0x8F8B83;
 constexpr uint32_t COL_SUN    = 0xF5B342;
-constexpr uint32_t COL_MOON   = 0xE9E6DD, COL_CLOUD = 0xDDE3EC, COL_RAIN = 0x5AB4F0;
+// The moon a quiet night blue rather than white (owner, 2026-10-03). The cloud takes a shade
+// from the weather it carries: light for overcast, slate for rain, dark for a storm, so the
+// four cloudy symbols differ at a glance and not only by what hangs under them.
+constexpr uint32_t COL_MOON   = 0x7F9CCB, COL_CLOUD = 0xDDE3EC, COL_RAIN = 0x5AB4F0;
+constexpr uint32_t COL_CLOUD_RAIN = 0x8E9CB0, COL_CLOUD_SNOW = 0xC4CCD8, COL_CLOUD_STORM = 0x5F6774;
 constexpr uint32_t COL_SNOW   = 0xE9EEF5, COL_FOG   = 0xC9CDD3, COL_CAPSULE = 0x10151C;
 constexpr uint32_t STALE_MS   = 2UL * 60 * 60 * 1000; // older than this and the temperature greys
 
@@ -149,7 +153,9 @@ void draw_symbol(const Look &k, bool day) {
     }
     if (k.cloud) {
         show_img(s_bgSun, k.sky ? sky : nullptr, fx + skyX, fy + skyY, skyCol);
-        show_img(s_bgBase, &wxi_cloud_l, fx + WXI_CLOUD_L_X, fy + WXI_CLOUD_L_Y, COL_CLOUD);
+        const uint32_t cloudCol = k.layer == DROPS ? COL_CLOUD_RAIN : k.layer == SNOW ? COL_CLOUD_SNOW
+                                : k.layer == BOLT ? COL_CLOUD_STORM : COL_CLOUD;
+        show_img(s_bgBase, &wxi_cloud_l, fx + WXI_CLOUD_L_X, fy + WXI_CLOUD_L_Y, cloudCol);
     } else {
         show_img(s_bgSun, nullptr, 0, 0, 0);
         show_img(s_bgBase, sky, fx + skyX, fy + skyY, skyCol);
