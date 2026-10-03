@@ -182,6 +182,10 @@ static void mask_polylines(uint8_t *mask, size_t polys, int c) {
 // the network task reads it, and every one of those holds s_plateMx.
 static std::mutex s_plateMx;
 static uint16_t *s_plateCrop = nullptr;
+// True when s_plateCrop points into the theme's own decoded picture instead of a copy: with
+// the map at the full 466 px the "crop" is the whole picture, and copying it cost 434 KB of
+// contiguous PSRAM at the moment the map needs the most (2026-10-03).
+static bool      s_plateBorrowed = false;
 // Separate from the pointer, because the buffer is kept once allocated and a design that
 // drops its picture has to stop drawing it without the allocation going away.
 static bool      s_plateHave = false;
@@ -322,17 +326,31 @@ void wx_plate_blit(uint16_t *dst) {
 
 void wx_plate_free() {
     std::lock_guard<std::mutex> lock(s_plateMx);
-    if (s_plateCrop) { heap_caps_free(s_plateCrop); s_plateCrop = nullptr; }
+    if (s_plateCrop && !s_plateBorrowed) heap_caps_free(s_plateCrop);
+    s_plateCrop = nullptr;
+    s_plateBorrowed = false;
     s_plateHave = false;
 }
 
 void wx_plate_set(const uint16_t *src, int w, int h) {
     std::lock_guard<std::mutex> lock(s_plateMx);
     if (!src || w <= 0 || h <= 0) {
-        if (s_plateCrop) memset(s_plateCrop, 0, (size_t)WX_RADAR_SIZE * WX_RADAR_SIZE * sizeof(uint16_t));
+        if (s_plateCrop && !s_plateBorrowed) heap_caps_free(s_plateCrop);
+        s_plateCrop = nullptr;
+        s_plateBorrowed = false;
         s_plateHave = false;
         return;
     }
+    if (w == WX_RADAR_SIZE && h == WX_RADAR_SIZE) {
+        // Same size as the map: read the picture where it already is. The caller keeps it
+        // alive until wx_plate_free() (ui_weather_art_release frees this before the art).
+        if (s_plateCrop && !s_plateBorrowed) heap_caps_free(s_plateCrop);
+        s_plateCrop = const_cast<uint16_t *>(src);
+        s_plateBorrowed = true;
+        s_plateHave = true;
+        return;
+    }
+    if (s_plateBorrowed) { s_plateCrop = nullptr; s_plateBorrowed = false; }
     if (!s_plateCrop) {
         s_plateCrop = (uint16_t *)heap_caps_malloc((size_t)WX_RADAR_SIZE * WX_RADAR_SIZE * sizeof(uint16_t),
                                                    MALLOC_CAP_SPIRAM);

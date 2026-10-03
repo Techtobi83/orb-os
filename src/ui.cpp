@@ -1592,8 +1592,10 @@ void ui_weather_art_release(void) {
         lv_img_set_src(s_wxPlate, nullptr);
         lv_obj_add_flag(s_wxPlate, LV_OBJ_FLAG_HIDDEN);
     }
+    // The map's crop first: it may point INTO the art (wx_plate_set borrows a picture that is
+    // already map-sized), so it has to let go before the art goes back.
+    wx_plate_free();
     plate_sprite::release(s_wxPlateArt);
-    wx_plate_free();   // the 434 KB crop of it too; see s_plateMx in wx_radar_client.cpp
     // And the text layer (651 KB, 466x466 with alpha). It was kept after the first visit for
     // the life of the process; wx_text_refresh() takes it again when the map is next shown.
     if (s_wxTextBuf) {
