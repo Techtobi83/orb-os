@@ -37,6 +37,8 @@ int  host_wifi_scan_result(char names[][33], int8_t *rssi, bool *isOpen, int max
 void host_wifi_restore_saved();                   // main.cpp — put the backed-up network back
 int  host_wifi_known_names(char out[][33], int maxN);   // main.cpp — the last 3 joined, NAMES only
 void host_special_test(bool urgent);              // main.cpp — the special-aircraft banner + sound
+void host_geocode_request(const char *query);      // main.cpp — the city search, asked
+int  host_geocode_result(char names[][40], double *lats, double *lons, int maxN);
 int  host_get_night_mode();                       // main.cpp — 0 off, 1 22-07, 2 always
 void host_set_night_mode(int mode);
 
@@ -907,6 +909,14 @@ void dispatch(char *line) {
     else if (!strcmp(line, "night")) {              // "night" reads, "night 0|1|2" sets (and saves)
         if (arg && *arg) host_set_night_mode(atoi(arg));
         out_reset(); out_fmt("{\"ok\":true,\"night\":%d}", host_get_night_mode()); out_send();
+    }
+    else if (!strcmp(line, "geocode")) {           // "geocode <city>": the Settings search, over the cable
+        host_geocode_request(arg ? arg : "");
+        char names[4][40]; double la[4], lo[4]; int n = -1;
+        for (uint32_t t0 = millis(); n < 0 && millis() - t0 < 15000; ) { delay(50); n = host_geocode_result(names, la, lo, 4); }
+        out_reset(); out_fmt("{\"ok\":true,\"n\":%d,\"places\":[", n);
+        for (int i = 0; i < n; ++i) { if (i) out_str(","); out_json_string(names[i]); }
+        out_str("]}"); out_send();
     }
     else if (!strcmp(line, "special-test")) {
         host_special_test(arg && *arg);

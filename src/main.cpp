@@ -45,6 +45,7 @@
 #include "rtc_pcf85063.h"            // PCF85063 RTC (offline clock + date)
 #include "audio.h"                   // ES8311 alert pings
 #include "lang.h"                    // English / Deutsch: read first in setup(), tr() everywhere
+#include "net_fetch.h"               // the city search streams into PSRAM
 #include "knob.h"                    // rotary encoder on the 8-pin header
 #include "app_shell.h"               // "channel changer": knob flips between apps
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
@@ -262,6 +263,7 @@ static void applyPolledAircraft(std::vector<Aircraft> &fresh, uint32_t nowMs) {
 // ---- networking task (core 0): fetch + parse, never touches the display ----
 static bool wifi_roam_to_known();     // below, with the other WiFi credential code
 static void wifi_known_note_link();
+static void geocode_service();         // below, with the city search
 static void adsb_task(void*) {
     std::vector<Aircraft> fresh;
     bool wasConnected = false;
@@ -360,6 +362,7 @@ static void adsb_task(void*) {
             g_requery = false;
             lastPoll = 0;                         // poll immediately at the new radius
         }
+        geocode_service();                        // a city search from Settings, if one waits
         if (conn) {
             // The live aircraft feed is the primary job, so poll FIRST every cycle. That keeps
             // it refreshing even while the user taps around — a slow route/photo lookup (below)
@@ -1651,45 +1654,86 @@ static void host_locate_if_unset() {
 
 // Free city search (Open-Meteo geocoding, no key). Fills names/lats/lons with up to
 // maxN matches for the query; returns the count. Runs synchronously (~1s).
-int host_geocode(const char *query, char names[][40], double *lats, double *lons, int maxN) {
+// The city search, off the UI thread.
+//
+// It used to run right here, called from Settings on the UI thread: an HTTP lookup with a
+// 4 s connect and 6 s read budget, every time the typing paused. The screen and the knob
+// froze for as long as the geocoder took, and on a heap this short of internal RAM the
+// String body could fail outright; the owner met it as "the Orb hung while I typed a city"
+// (2026-10-03). Now Settings asks (host_geocode_request) and polls (host_geocode_result),
+// the network task does the fetch, streamed into PSRAM like the weather tiles, and the
+// knob keeps working throughout.
+static volatile int g_geoState = 0;            // 0 idle, 1 asked, 2 answered
+static char   g_geoQuery[64] = "";
+static char   g_geoNames[4][40];
+static double g_geoLat[4], g_geoLon[4];
+static int    g_geoCount = 0;
+
+static int geocode_fetch(const char *query, char names[][40], double *lats, double *lons, int maxN) {
     if (WiFi.status() != WL_CONNECTED || !query || strlen(query) < 2) return 0;
-    // Percent-encode anything that is not plainly safe in a query value. It used to encode
-    // the space and pass everything else through, which was fine until the search keyboard
-    // gained a comma (settings_view.cpp) and "Leeds, UT" started arriving here.
-    String q;
-    for (const char *p = query; *p; ++p) {
+    // Percent-encode anything that is not plainly safe in a query value (the search keyboard
+    // has a comma, for "Leeds, UT").
+    char url[256];
+    int n = snprintf(url, sizeof(url), "http://geocoding-api.open-meteo.com/v1/search?name=");
+    for (const char *p = query; *p && n < (int)sizeof(url) - 40; ++p) {
         const unsigned char c = (unsigned char)*p;
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') q += (char)c;
-        else { char esc[4]; snprintf(esc, sizeof(esc), "%%%02X", c); q += esc; }
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') url[n++] = (char)c;
+        else n += snprintf(url + n, sizeof(url) - n, "%%%02X", c);
     }
-    // Plain HTTP for the same memory reason as the ADS-B and weather feeds; see the
-    // ADSB_PRIMARY_TLS notes in config.h. This is a place-name lookup with no credentials.
-    String url = "http://geocoding-api.open-meteo.com/v1/search?name=" + q +
-                 "&count=" + String(maxN) + "&language=en&format=json";
-    WiFiClient client;
-    HTTPClient http;
-    http.setConnectTimeout(4000);
-    http.setTimeout(6000);
-    if (!http.begin(client, url)) return 0;
-    if (http.GET() != 200) { http.end(); return 0; }
-    String body = http.getString();
-    http.end();
+    snprintf(url + n, sizeof(url) - n, "&count=%d&language=en&format=json", maxN);
+    uint8_t *body = nullptr; size_t len = 0;
+    if (!net_fetch_psram(url, ADSB_USER_AGENT, &body, &len, 32768, 4000, 8000)) return 0;
+    JsonDocument filter;
+    filter["results"][0]["name"] = true; filter["results"][0]["admin1"] = true;
+    filter["results"][0]["country_code"] = true;
+    filter["results"][0]["latitude"] = true; filter["results"][0]["longitude"] = true;
     JsonDocument doc;
-    if (deserializeJson(doc, body)) return 0;
-    JsonArrayConst results = doc["results"].as<JsonArrayConst>();
-    int n = 0;
-    for (JsonObjectConst r : results) {
-        if (n >= maxN) break;
+    const bool bad = (bool)deserializeJson(doc, (const char *)body, len, DeserializationOption::Filter(filter));
+    heap_caps_free(body);
+    if (bad) return 0;
+    int k = 0;
+    for (JsonObjectConst r : doc["results"].as<JsonArrayConst>()) {
+        if (k >= maxN) break;
         const char *name   = r["name"]   | "";
         const char *admin1 = r["admin1"] | "";
         const char *cc     = r["country_code"] | "";
         const char *sub    = admin1[0] ? admin1 : cc;
-        snprintf(names[n], 40, "%s%s%s", name, sub[0] ? ", " : "", sub);
-        lats[n] = r["latitude"]  | 1000.0;
-        lons[n] = r["longitude"] | 1000.0;
-        if (lats[n] <= 90 && lats[n] >= -90) n++;
+        snprintf(names[k], 40, "%s%s%s", name, sub[0] ? ", " : "", sub);
+        lats[k] = r["latitude"]  | 1000.0;
+        lons[k] = r["longitude"] | 1000.0;
+        if (lats[k] <= 90 && lats[k] >= -90) k++;
     }
+    return k;
+}
+
+void host_geocode_request(const char *query) {
+    snprintf(g_geoQuery, sizeof(g_geoQuery), "%s", query ? query : "");
+    g_geoState = 1;
+}
+
+// -1 while the lookup is still running; otherwise how many places it found (0 = none, or no
+// network), copied out, and the slot is free again.
+int host_geocode_result(char names[][40], double *lats, double *lons, int maxN) {
+    if (g_geoState != 2) return -1;
+    const int n = g_geoCount < maxN ? g_geoCount : maxN;
+    for (int i = 0; i < n; ++i) {
+        memcpy(names[i], g_geoNames[i], 40);
+        lats[i] = g_geoLat[i]; lons[i] = g_geoLon[i];
+    }
+    g_geoState = 0;
     return n;
+}
+
+// Network task: answer a waiting search. Called whether or not the link is up, so a search
+// made without WiFi answers "nothing" at once instead of waiting forever.
+static void geocode_service() {
+    if (g_geoState != 1) return;
+    char q[64];
+    snprintf(q, sizeof(q), "%s", g_geoQuery);
+    const uint32_t t0 = millis();
+    g_geoCount = geocode_fetch(q, g_geoNames, g_geoLat, g_geoLon, 4);
+    Serial.printf("[geocode] '%s': %d place(s) in %lu ms\n", q, g_geoCount, (unsigned long)(millis() - t0));
+    if (strcmp(q, g_geoQuery) == 0) g_geoState = 2;   // a newer question was asked meanwhile: answer that one
 }
 
 // ---- recent cities (small list persisted in NVS, survives the reboot on location change) ----

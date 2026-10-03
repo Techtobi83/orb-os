@@ -32,7 +32,8 @@ extern void     host_set_night_mode(int mode);
 extern void host_set_location(double lat, double lon);              // saves + reboots
 extern void host_set_location_named(const char *name, double lat, double lon);  // + records in recents
 extern bool host_locate_current();                                 // IP-locate + set + reboot; false = failed, didn't reboot
-extern int  host_geocode(const char *query, char names[][40], double *lats, double *lons, int maxN);
+extern void host_geocode_request(const char *query);   // asks the network task; never blocks
+extern int  host_geocode_result(char names[][40], double *lats, double *lons, int maxN);   // -1 = still looking
 extern int  host_recents_get(char names[][40], double *lats, double *lons, int maxN);
 // What this place is CALLED, saved beside the coordinates by whichever path set them.
 // Lerxtwood asked for it on the Location page as well as on the flight tracker, and said
@@ -354,6 +355,7 @@ namespace {
     bool   s_pending   = false;
     int    s_countdown = 0;
     bool   s_searching = false;
+    uint32_t s_searchAt = 0;   // when the running search was asked
 
     lv_obj_t *s_screen  = nullptr;
     lv_obj_t *s_menu    = nullptr;
@@ -1114,9 +1116,15 @@ namespace {
 
     void search_tick(lv_timer_t * /*t*/) {
         if (s_mode != MODE_SEARCH) return;
-        if (s_searching) {                        // "searching" is already painted; do the blocking fetch now
+        if (s_searching) {                        // the network task is looking; the knob stays live
+            const int n = host_geocode_result(s_sugName, s_sugLat, s_sugLon, 4);
+            if (n < 0) {
+                if (millis() - s_searchAt < 15000UL) return;
+                s_sugCount = 0;                   // no answer in 15 s: stop saying "searching"
+            } else {
+                s_sugCount = n;
+            }
             s_searching = false;
-            s_sugCount = host_geocode(s_str, s_sugName, s_sugLat, s_sugLon, 4);
             const int total = N_KEYS + s_sugCount;
             if (s_kbIdx >= total) s_kbIdx = total - 1;
             refresh_search();
@@ -1126,7 +1134,9 @@ namespace {
         if (--s_countdown > 0) return;
         s_pending = false;
         if (strlen(s_str) < 2) { s_sugCount = 0; refresh_search(); return; }
-        s_searching = true; refresh_search();     // paints "searching"; fetch fires next tick
+        s_searching = true; s_searchAt = millis();
+        host_geocode_request(s_str);
+        refresh_search();                         // paints "searching"; the answer comes in later ticks
     }
 
     // ---- WiFi setup (encoder-driven: scrolling list -> character-strip password) ----

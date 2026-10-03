@@ -172,6 +172,13 @@ int host_geocode(const char *query, char names[][40], double *lats, double *lons
     }
     return n;
 }
+static char s_simGeoQ[64]; static bool s_simGeoAsked = false;
+void host_geocode_request(const char *q) { snprintf(s_simGeoQ, sizeof(s_simGeoQ), "%s", q ? q : ""); s_simGeoAsked = true; }
+int host_geocode_result(char names[][40], double *lats, double *lons, int maxN) {
+    if (!s_simGeoAsked) return -1;
+    s_simGeoAsked = false;
+    return host_geocode(s_simGeoQ, names, lats, lons, maxN);
+}
 
 int  host_get_volume() { return 70; }
 void host_set_volume(int, bool) {}
