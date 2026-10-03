@@ -118,6 +118,7 @@ static lv_obj_t *s_weatherTitle = nullptr;
 // of those by simply never being defined, and neither is the designer's to delete.
 static lv_obj_t   *s_wxTextCanvas = nullptr;
 static lv_color_t *s_wxTextBuf    = nullptr;
+static bool        s_wxOpen       = false;   // the weather map is on the glass (attach..release)
 
 // When the radar picture currently on screen was actually taken, as a unix time.
 //
@@ -492,6 +493,9 @@ static void wx_status_timer_cb(lv_timer_t *) {
 // An unknown token comes out empty, which reads as a typo. Leaving "{tmp}" on the glass
 // would read as the firmware being broken.
 static void wx_text_refresh(void) {
+    // Only while the map is open. The weather data refreshes every half hour on any screen,
+    // and drawing the text then would take the 651 KB layer back while nobody can see it.
+    if (!s_wxOpen) return;
     const theme_style::Weather &ws = theme_style::weather();
     if (!wx_slots_active()) {
         // Nothing to draw, and nothing to hold: a theme that does not use these must not pay
@@ -1564,6 +1568,8 @@ void ui_create(void) {
 // This screen had no art hooks at all: it was the one screen in Studio offering a
 // background picture that nothing shipped and nothing decoded.
 void ui_weather_art_attach(void) {
+    s_wxOpen = true;
+    wx_text_refresh();   // the town and the other lines, at once rather than at the next frame
     if (!s_wxPlate) return;
     const lv_img_dsc_t *art = plate_sprite::get(s_wxPlateArt);
     if (art) {
@@ -1581,11 +1587,23 @@ void ui_weather_art_attach(void) {
 }
 
 void ui_weather_art_release(void) {
+    s_wxOpen = false;
     if (s_wxPlate) {
         lv_img_set_src(s_wxPlate, nullptr);
         lv_obj_add_flag(s_wxPlate, LV_OBJ_FLAG_HIDDEN);
     }
     plate_sprite::release(s_wxPlateArt);
+    wx_plate_free();   // the 434 KB crop of it too; see s_plateMx in wx_radar_client.cpp
+    // And the text layer (651 KB, 466x466 with alpha). It was kept after the first visit for
+    // the life of the process; wx_text_refresh() takes it again when the map is next shown.
+    if (s_wxTextBuf) {
+        if (s_wxTextCanvas) {
+            lv_img_set_src(s_wxTextCanvas, (const void *)NULL);   // detach before the free
+            lv_obj_add_flag(s_wxTextCanvas, LV_OBJ_FLAG_HIDDEN);
+        }
+        heap_caps_free(s_wxTextBuf);
+        s_wxTextBuf = nullptr;
+    }
     // The map canvas points INTO the radar's frame buffer, and leaving the app gives those
     // buffers back (wx_radar_release, on the network task, at its next quiet moment). Left
     // visible, the canvas went on pointing at memory that by the next visit belonged to

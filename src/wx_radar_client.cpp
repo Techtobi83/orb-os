@@ -5,6 +5,7 @@
 #include "roads_sd.h"
 #include "coastline.h"
 #include "theme_style.h"
+#include <mutex>
 #ifdef ARDUINO
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -172,9 +173,14 @@ static void mask_polylines(uint8_t *mask, size_t polys, int c) {
     }
 }
 
-// The plate, cropped to the radar circle. See the note in wx_radar.h for why it is never
-// freed. 253 KB, against the 1.2 MB of frame buffers this screen already takes and gives
-// back around it.
+// The plate, cropped to the radar circle. It used to be kept for the life of the process so
+// that the two threads touching it never raced a free; at 360 px that was 253 KB. The map
+// grew to 466 px (434 KB), and together with the decode buffer and the decoder below it was
+// about a megabyte of PSRAM held after the app closed: a one-hour soak test ended with 175 KB
+// of PSRAM free and the weather map and the Earth both failing (2026-10-03). It is freed on
+// the way out now, and the mutex is what makes that safe: the UI thread fills and frees it,
+// the network task reads it, and every one of those holds s_plateMx.
+static std::mutex s_plateMx;
 static uint16_t *s_plateCrop = nullptr;
 // Separate from the pointer, because the buffer is kept once allocated and a design that
 // drops its picture has to stop drawing it without the allocation going away.
@@ -292,6 +298,7 @@ static void draw_rings(uint16_t *dst) {
 
 static void wx_apply_zones(uint16_t *dst) {
     if (!dst || theme_style::weather().zoneCount <= 0) return;
+    std::lock_guard<std::mutex> lock(s_plateMx);
     const uint16_t bg = rgb565(theme_style::weather().bg);
     const bool havePlate = wx_plate_have() && s_plateCrop;
     int cleared = 0;
@@ -308,11 +315,19 @@ static void wx_apply_zones(uint16_t *dst) {
 }
 
 void wx_plate_blit(uint16_t *dst) {
+    std::lock_guard<std::mutex> lock(s_plateMx);
     if (s_plateCrop && dst)
         memcpy(dst, s_plateCrop, (size_t)WX_RADAR_SIZE * WX_RADAR_SIZE * sizeof(uint16_t));
 }
 
+void wx_plate_free() {
+    std::lock_guard<std::mutex> lock(s_plateMx);
+    if (s_plateCrop) { heap_caps_free(s_plateCrop); s_plateCrop = nullptr; }
+    s_plateHave = false;
+}
+
 void wx_plate_set(const uint16_t *src, int w, int h) {
+    std::lock_guard<std::mutex> lock(s_plateMx);
     if (!src || w <= 0 || h <= 0) {
         if (s_plateCrop) memset(s_plateCrop, 0, (size_t)WX_RADAR_SIZE * WX_RADAR_SIZE * sizeof(uint16_t));
         s_plateHave = false;
@@ -462,6 +477,14 @@ static bool ensure_decoder(void) {
     s_png = new (mem) PNG();
     Serial.printf("[wxradar] PNG decoder in PSRAM (%u bytes)\n", (unsigned)sizeof(PNG));
     return true;
+}
+
+// The decode buffer (434 KB) and the PNG decoder (51 KB) belong to the network task alone,
+// which is the one that calls this, from wx_radar_release()'s caller, when the app has
+// closed and no fetch is running. Taken again on the next fetch.
+void wx_fetch_release() {
+    if (s_nativeBuf) { heap_caps_free(s_nativeBuf); s_nativeBuf = nullptr; }
+    if (s_png) { s_png->~PNG(); heap_caps_free(s_png); s_png = nullptr; }
 }
 
 static int radar_png_line(PNGDRAW *draw) {
@@ -646,7 +669,9 @@ int wx_radar_fetch_frame(double lat, double lon, int zoomTier, uint32_t gen, int
     // Composite, bottom up: the theme's background, then the roads and coastline, then the
     // precipitation. The background used to be a memset to black, which is what made a
     // design's chosen picture and colour both invisible under this screen's opaque image.
-    if (wx_plate_have()) wx_plate_blit(wx_radar_back_buffer());
+    bool plated;
+    { std::lock_guard<std::mutex> lock(s_plateMx); plated = wx_plate_have(); }
+    if (plated) wx_plate_blit(wx_radar_back_buffer());
     else {
         const uint16_t bg = rgb565(theme_style::weather().bg);
         uint16_t *dst = wx_radar_back_buffer();

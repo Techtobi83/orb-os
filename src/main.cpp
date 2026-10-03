@@ -545,6 +545,7 @@ static void adsb_task(void*) {
             if (g_wxClosed && wxFillIdx >= WX_RADAR_FRAMES) {
                 g_wxClosed = false;
                 wx_radar_release();
+                wx_fetch_release();   // and the decode buffer + decoder: ~485 KB of PSRAM back
                 // The road and coastline masks are NOT freed here. They are 16 KB each and
                 // they are the one thing both threads can see, so keeping them makes "the
                 // network task is mid-blit while the app closes" a non-question rather than

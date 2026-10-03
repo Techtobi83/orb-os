@@ -63,6 +63,8 @@ void wx_map_prepare(double lat, double lon, int tier);
 // moment when one can be reading it while the other takes it away.
 void wx_plate_set(const uint16_t *src466, int w, int h);   // UI thread; nullptr clears it
 bool wx_plate_have();
+void wx_plate_free();                // UI thread, leaving the app: gives the 434 KB crop back
+void wx_fetch_release();             // network task, at release: the decode buffer and decoder
 void wx_plate_blit(uint16_t *dst360);   // network task: lay it down as the frame's base
 
 // WHAT THE WEATHER APP IS DOING RIGHT NOW, so the screen can say so.
