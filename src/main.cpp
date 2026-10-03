@@ -3176,7 +3176,14 @@ void setup() {
     // tripping the "feed stuck 180s -> reboot" recovery every few minutes. Internal
     // memory allocations don't get restructured at all; they're just redirected to the
     // ~8MB PSRAM pool, which has vastly more room to absorb the same churn.
-    heap_caps_malloc_extmem_enable(4096);
+    //
+    // 512 since 2.31.9, not 4096. Everything under 4 KB still went to internal RAM: HTTP and
+    // socket buffers, JSON documents, Strings. On a long run that churn cut the internal heap
+    // into pieces, and a soak test ended in a task-watchdog reset with the WiFi driver unable
+    // to get a transmit buffer (esf_buf_alloc_dynamic, largest internal block ~5 KB,
+    // 2026-10-03). Allocations that must be internal (DMA, ISR, task stacks, the WiFi
+    // driver's own) ask for it by capability and are not affected by this threshold.
+    heap_caps_malloc_extmem_enable(512);
 
     psram_mark("boot start");
     sdcard::begin();
