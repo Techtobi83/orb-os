@@ -12,17 +12,20 @@ extern const lv_img_dsc_t wxi_moon_l;
 #define WXI_MOON_L_X 69   /* offset inside the 384 px frame */
 #define WXI_MOON_L_Y 71
 extern const lv_img_dsc_t wxi_drops_l;
-#define WXI_DROPS_L_X 106   /* offset inside the 384 px frame */
-#define WXI_DROPS_L_Y 303
+#define WXI_DROPS_L_X 105   /* offset inside the 384 px frame */
+#define WXI_DROPS_L_Y 206
 extern const lv_img_dsc_t wxi_snow_l;
-#define WXI_SNOW_L_X 115   /* offset inside the 384 px frame */
-#define WXI_SNOW_L_Y 313
+#define WXI_SNOW_L_X 114   /* offset inside the 384 px frame */
+#define WXI_SNOW_L_Y 213
 extern const lv_img_dsc_t wxi_bolt_l;
-#define WXI_BOLT_L_X 158   /* offset inside the 384 px frame */
-#define WXI_BOLT_L_Y 275
+#define WXI_BOLT_L_X 157   /* offset inside the 384 px frame */
+#define WXI_BOLT_L_Y 195
 extern const lv_img_dsc_t wxi_fog_l;
 #define WXI_FOG_L_X 67   /* offset inside the 384 px frame */
 #define WXI_FOG_L_Y 316
+extern const lv_img_dsc_t wxi_fogbank_l;
+#define WXI_FOGBANK_L_X 70   /* offset inside the 384 px frame */
+#define WXI_FOGBANK_L_Y 106
 #define WXI_FRAME_L 384
 
 extern const lv_img_dsc_t wxi_cloud_s;

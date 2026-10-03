@@ -139,6 +139,14 @@ void draw_symbol(const Look &k, bool day) {
     const lv_img_dsc_t *sky  = day ? &wxi_sun_l : &wxi_moon_l;
     const int skyX = day ? WXI_SUN_L_X : WXI_MOON_L_X, skyY = day ? WXI_SUN_L_Y : WXI_MOON_L_Y;
     const uint32_t skyCol = day ? COL_SUN : COL_MOON;
+    if (k.layer == FOG) {
+        // Fog is its own picture on the large symbol: banks of mist, no cloud. Two thin lines
+        // under a cloud were what this showed before, and they sat behind tomorrow's capsule.
+        show_img(s_bgSun, nullptr, 0, 0, 0);
+        show_img(s_bgBase, &wxi_fogbank_l, fx + WXI_FOGBANK_L_X, fy + WXI_FOGBANK_L_Y, COL_FOG);
+        show_img(s_bgOver, nullptr, 0, 0, 0);
+        return;
+    }
     if (k.cloud) {
         show_img(s_bgSun, k.sky ? sky : nullptr, fx + skyX, fy + skyY, skyCol);
         show_img(s_bgBase, &wxi_cloud_l, fx + WXI_CLOUD_L_X, fy + WXI_CLOUD_L_Y, COL_CLOUD);
@@ -150,7 +158,6 @@ void draw_symbol(const Look &k, bool day) {
         case DROPS: show_img(s_bgOver, &wxi_drops_l, fx + WXI_DROPS_L_X, fy + WXI_DROPS_L_Y, COL_RAIN); break;
         case SNOW:  show_img(s_bgOver, &wxi_snow_l,  fx + WXI_SNOW_L_X,  fy + WXI_SNOW_L_Y,  COL_SNOW); break;
         case BOLT:  show_img(s_bgOver, &wxi_bolt_l,  fx + WXI_BOLT_L_X,  fy + WXI_BOLT_L_Y,  COL_SUN);  break;
-        case FOG:   show_img(s_bgOver, &wxi_fog_l,   fx + WXI_FOG_L_X,   fy + WXI_FOG_L_Y,   COL_FOG);  break;
         default:    show_img(s_bgOver, nullptr, 0, 0, 0); break;
     }
 }
