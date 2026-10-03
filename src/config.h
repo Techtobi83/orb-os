@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.30.6"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.31.1"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -61,6 +61,12 @@
 // item. Not themeable yet: it has no Orb Studio half.
 #define FORECAST_ENABLED 1
 #define FORECAST_NAME    tr("Forecast", "Vorhersage")   // the knob menu's label for it (lang.h)
+
+// "Earth": the globe over home with the real sun (globe_view.cpp). Its two pictures live on
+// the SD card in /earth; without them the screen says so.
+#define GLOBE_ENABLED    1
+#define GLOBE_NAME       tr("Earth", "Erde")
+#define GLOBE_RADIUS_PX  222    // to the glass: 222 + the 9 px atmosphere = 231 of 233
 
 // ---------- Touch: swipe sideways to change app ----------
 // The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds

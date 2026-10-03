@@ -50,6 +50,7 @@
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
 #include "touch_swipe.h"             // sideways swipe on the glass (TOUCH_SWIPE_ENABLED)
 #include "forecast_view.h"           // "Vorhersage", the forecast dial (FORECAST_ENABLED)
+#include "globe_view.h"              // "Erde", the globe with the real sun (GLOBE_ENABLED)
 #include "diag_log.h"                // RTC-memory event ring buffer, survives a reboot
 #include "sdcard.h"                  // microSD (TF) slot, SPI mode
 #include "roads_sd.h"                // worldwide roads read off the SD card
@@ -3280,6 +3281,12 @@ void setup() {
     psram_mark("after forecastview");
     app_shell::add(forecastview::screen(), FORECAST_NAME, nullptr, nullptr, false,
                    forecastview::onEnter, forecastview::onExit, false);   // reads the stored forecast; no press, no turn
+#endif
+#if GLOBE_ENABLED
+    globeview::init();
+    app_shell::add(globeview::screen(), GLOBE_NAME, nullptr, globeview::onTurn, false,
+                   []() { globeview::onEnter(g_settings.homeLat, g_settings.homeLon); },
+                   globeview::onExit, false);   // turning spins the globe; it glides home after 5 s
 #endif
 #if !APPS_LAUNCH_ONE
     spycamview::init();

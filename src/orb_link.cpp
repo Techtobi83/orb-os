@@ -573,8 +573,12 @@ void get_abort() {
 // pulling the microSD out of the device. Both are device-owned data directories, and the
 // filename rules below still forbid traversal, so widening to two named roots does not
 // widen what a caller can reach.
+// "roads" and "earth" are card folders of their own (the weather map's roads, the Earth
+// app's two pictures); everything else is a theme slug under /themes.
+const char *s_rootDir = "/roads";
 bool root_ok(const char *slug, bool *isRoads) {
-    if (!strcmp(slug, "roads")) { *isRoads = true; return true; }
+    if (!strcmp(slug, "roads")) { *isRoads = true; s_rootDir = "/roads"; return true; }
+    if (!strcmp(slug, "earth")) { *isRoads = true; s_rootDir = "/earth"; return true; }
     *isRoads = false;
     return slug_ok(slug);
 }
@@ -768,7 +772,7 @@ void cmd_get_begin(char *args) {
     if (!sdcard::mounted())                { reply_error("no SD card");    return; }
 
     char path[96];
-    if (isRoads) snprintf(path, sizeof(path), "/roads/%s", file);
+    if (isRoads) snprintf(path, sizeof(path), "%s/%s", s_rootDir, file);
     else         snprintf(path, sizeof(path), "/themes/%s/%s", slug, file);
     s_getFile = SD.open(path, FILE_READ);
     if (!s_getFile) { reply_error("no such file"); return; }
@@ -814,7 +818,7 @@ void cmd_put_begin(char *args) {
     if (!sdcard::mounted())                         { reply_error("no SD card");     return; }
 
     char path[96];
-    if (isRoads) snprintf(path, sizeof(path), "/roads/%s", file);
+    if (isRoads) snprintf(path, sizeof(path), "%s/%s", s_rootDir, file);
     else         snprintf(path, sizeof(path), "/themes/%s/%s", slug, file);
     // Create every missing level (same reasoning as the WiFi path: SD.mkdir does not
     // create intermediates, so a virgin card fails at /themes otherwise).

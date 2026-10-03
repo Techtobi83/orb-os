@@ -50,3 +50,10 @@ rendered from Montserrat, Copyright 2011 The Montserrat Project Authors
 License 1.1. The source font and its licence are in assets/fonts/
 (Montserrat-Variable.ttf, Montserrat-OFL.txt); the bitmaps are rendered by
 tools/gen_lv_font.py.
+
+Earth imagery
+-------------
+
+assets/earth/day.jpg and night.jpg, the Earth app's pictures, are reduced from NASA Earth
+Observatory's Blue Marble Next Generation (image record 74092) and Black Marble 2016 (image
+record 144898), both public domain. tools/gen_earth_textures.py makes them from the originals.

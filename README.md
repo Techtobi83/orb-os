@@ -40,6 +40,7 @@ taken or left on its own.
 **New and returning apps**
 - **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself; Settings → Livestream → Show app takes it out of the menu without forgetting the URL.
 - **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
+- **Earth** ("Erde"): the globe from space over your home, NASA day and night imagery, the real sun with a soft twilight band and city lights. Turn the knob to spin it; it glides home after 5 s. Needs `day.jpg` and `night.jpg` from the release in `/earth/` on the SD card.
 - **Weather radar** is back in the build: rain only (no weak echoes), the full round display, 40 km, one frame every five minutes, with the town's name.
 - **News** is compiled out of this build (`NEWS_ENABLED 0`).
 

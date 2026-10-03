@@ -56,6 +56,9 @@ namespace app_shell {
 #if FORECAST_ENABLED
         APP_FORECAST,    // "Vorhersage" (config.h)
 #endif
+#if GLOBE_ENABLED
+        APP_GLOBE,       // "Erde" (config.h, globe_view.cpp)
+#endif
 #if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif
