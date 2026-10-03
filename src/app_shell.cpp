@@ -56,6 +56,7 @@ namespace {
     lv_obj_t *s_overlayPlate  = nullptr;   // a custom menu's baked background image, if any
     lv_obj_t *s_overlayGlass  = nullptr;   // a custom menu's baked CRT+glass, if any
     uint32_t  s_browseTouch   = 0;         // millis() of the last browse interaction
+    bool      s_entered       = false;     // s_cur's onEnter has run and its onExit has not
     // How many detents move the menu on by one app.
     //
     // One. Two was tried on 2026-08-26 and rejected on the hardware within minutes: it
@@ -260,8 +261,18 @@ namespace {
         // Tell the outgoing app it's leaving before we swap, so it can free whatever it
         // decoded. Both this and onEnter now fire ONLY on a real app change (boot, a
         // committed switcher selection, or next()/prev()), never per switcher detent.
-        if (idx != s_cur && s_count && s_apps[s_cur].onExit) s_apps[s_cur].onExit();
+        //
+        // EVERY onEnter is now paired with an onExit, including when the app chosen is the one
+        // already running. The menu does exactly that all the time: open it with the rock or
+        // the pull-down, do not turn, and it settles on the current app. That used to run
+        // onEnter a second time with no onExit before it, so each app took its buffers again
+        // on top of the ones it held: 434 KB for the Livestream, about 2 MB for the Earth.
+        // The PSRAM drained over an hour of use, and when the second allocation failed the
+        // Livestream drew into a null canvas and the Orb panicked (soak test, 2026-10-03).
+        // Enforced here, on the one path every app switch takes, rather than in each app.
+        if (s_entered && s_count && s_apps[s_cur].onExit) s_apps[s_cur].onExit();
         s_cur = idx;
+        s_entered = true;
         s_captured = s_apps[idx].capture;   // menu apps grab the knob on entry
         if (s_apps[idx].screen != lv_scr_act()) {   // apps sharing a screen (radar/weather) skip the load
             if (animate) {
