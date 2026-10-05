@@ -96,6 +96,7 @@ Good to know:
 - The full image **erases WiFi and settings**; set them up once afterwards.
 - **Updating later** without losing them: flash `orb-os-<version>-app.bin` at address **`0x10000`** instead.
 - From the command line instead of the browser: `esptool.py --chip esp32s3 write_flash 0x0 orb-os-<version>-full.bin`.
+- **Screen stays black after flashing?** If the serial log (115200 baud, e.g. the web flasher's *Console*) repeats `ets_loader.c 78` and `TG0WDT_SYS_RST`, your board's flash chip does not take the faster QIO mode. Click **Erase Flash**, then flash `orb-os-<version>-full-dio.bin` at **`0x0`** instead. It is the same firmware set to DIO mode, and you will not notice a difference in use. Later `app.bin` updates work the same as for everyone else.
 - The Orb itself cannot update over WiFi in this build (that space holds theme art), so updates always go over USB.
 - **Do not update from Orb Studio**: its flasher would replace this fork with Zion's firmware. Flashing Zion's firmware the same way takes you back at any time.
 
