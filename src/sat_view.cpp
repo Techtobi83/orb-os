@@ -62,8 +62,11 @@ constexpr int SCR = SCREEN_W;
 // Every text line was measured against the Tagesring dial with the real Sora glyphs: the
 // minute ring starts at radius 214, and nothing written here comes within 10 px of it in
 // either language (the widest, "Mo 06:33 · 14° · SW → NO · im Schatten", by 11 px). The top
-// of a round screen is narrow, which is why the name is 24 px and sits this low.
-constexpr int GCX = 233, GCY = 226, GR = 96;      // the globe
+// of a round screen is narrow, which is why the name is 24 px and sits this low. The globe
+// is as large as the owner wanted it: its caps run a little behind the subtitle and the
+// first line below, where the limb darkening keeps the text readable. The dots that say
+// which satellite this is stand in a column to its left, where the round screen has room.
+constexpr int GCX = 233, GCY = 220, GR = 124;     // the globe
 constexpr int HALO = 12;                          // the amber atmosphere outside the limb
 constexpr int BOX = 2 * (GR + HALO + 4), BOX_X0 = GCX - BOX / 2, BOX_Y0 = GCY - BOX / 2;
 constexpr int TEX_W = 768, TEX_H = 384;           // the Earth app's pictures
@@ -642,7 +645,8 @@ void set_texts(uint32_t now) {
         lv_obj_set_size(s_dot[k], on ? 7 : 5, on ? 7 : 5);
         lv_obj_set_style_bg_color(s_dot[k], on ? C_AMBER : C_INK, 0);
         lv_obj_set_style_bg_opa(s_dot[k], on ? LV_OPA_COVER : LV_OPA_40, 0);
-        lv_obj_align(s_dot[k], LV_ALIGN_TOP_MID, (k * 2 - (NSAT - 1)) * 7, 111 - (on ? 1 : 0));
+        const int sz = on ? 7 : 5;
+        lv_obj_set_pos(s_dot[k], GCX - GR - 26 - sz / 2, GCY + (k * 2 - (NSAT - 1)) * 7 - sz / 2);
     }
     char a[64] = "", b[64] = "", c[80] = "", t1[24], t2[24];
     if (!v.posOk || v.sat != i) {
