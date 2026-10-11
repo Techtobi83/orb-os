@@ -22,13 +22,37 @@ static uint64_t  s_sizeBytes = 0;
 // handles reliably in SPI mode. Push higher only after confirming no read errors.
 static constexpr uint32_t SD_SPI_HZ = 20000000;
 
+// Fall back rather than refuse.
+//
+// 20 MHz is what a modern card manages and what Spy Cam needs, so it is tried first and
+// nothing that works today changes. But it is five times the Arduino default, and an older
+// card cannot always hold it: an SDSC card, which is anything 2 GB or under, will power up,
+// click, and then fail to mount with no hint as to why. Overcore lost a day to exactly that
+// on 2026-09-29 and had every reason to think the board was broken.
+//
+// So the speed is negotiated instead of assumed. A card that manages 20 gets 20; one that
+// does not gets a slower bus and works, which is far better than being told there is no card.
+static constexpr uint32_t SD_SPI_TRY[] = { SD_SPI_HZ, 10000000, 4000000 };
+
 bool sdcard::begin() {
     s_sdSpi.begin(SD_PIN_SCK, SD_PIN_MISO, SD_PIN_MOSI, SD_PIN_CS);
-    if (!SD.begin(SD_PIN_CS, s_sdSpi, SD_SPI_HZ) || SD.cardType() == CARD_NONE) {
-        Serial.println("[sd] no card detected");
+    bool up = false;
+    uint32_t hz = 0;
+    for (size_t i = 0; i < sizeof(SD_SPI_TRY) / sizeof(SD_SPI_TRY[0]) && !up; ++i) {
+        if (i) { SD.end(); delay(20); }          // let the previous attempt let go of the bus
+        if (SD.begin(SD_PIN_CS, s_sdSpi, SD_SPI_TRY[i]) && SD.cardType() != CARD_NONE) {
+            up = true;
+            hz = SD_SPI_TRY[i];
+        }
+    }
+    if (!up) {
+        Serial.println("[sd] no card detected (tried 20, 10 and 4 MHz)");
         s_mounted = false;
         return false;
     }
+    if (hz != SD_SPI_HZ)
+        Serial.printf("[sd] card would not run at %u MHz, using %u MHz instead\n",
+                      (unsigned)(SD_SPI_HZ / 1000000), (unsigned)(hz / 1000000));
     s_sizeBytes = SD.cardSize();
     const uint8_t type = SD.cardType();
     const char *typeName = type == CARD_MMC ? "MMC" : type == CARD_SD ? "SDSC" :
