@@ -422,7 +422,7 @@ void init() {
     // nothing comes within 10 px of its minute ring (radius 214), in either language.
     s_title = label(&font_sat_24b, C_AMBER, 3, 60, 300);
     lv_label_set_text(s_title, "MESHCORE");
-    s_sub = label(&font_sat_12, C_INK, 2, 92, 300);
+    s_sub = label(&font_sat_16b, C_INK, 2, 90, 290);   // the repeater's name, a size up at the owner's request
     s_l1 = label(&font_sat_18, C_INK, 0, 324, 330);
     s_l2 = label(&font_sat_16b, C_AMBER, 1, 348, 314);
     s_l3 = label(&font_sat_14, C_MUTED, 0, 369, 278);
