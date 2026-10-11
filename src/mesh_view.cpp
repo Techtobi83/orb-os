@@ -408,17 +408,11 @@ void release_all() {
     s_baseLat = s_baseLon = 999;
 }
 
-}  // namespace
-
-namespace meshview {
-
-void init() {
-    void *mem = heap_caps_calloc(1, sizeof(Shared), MALLOC_CAP_SPIRAM);
-    if (mem) S = new (mem) Shared();
-    s_scr = lv_obj_create(NULL);
-    lv_obj_set_style_bg_color(s_scr, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
-    lv_obj_clear_flag(s_scr, LV_OBJ_FLAG_SCROLLABLE);
+// The words and labels exist only while the page is open. LVGL keeps every allocation under
+// 2 KB in internal RAM (lv_psram_alloc.h), and these fifteen objects held about 3 KB of it for
+// the life of the device, out of the pool the WiFi driver receives into. Built on entry,
+// deleted on exit.
+void build_labels() {
     // Positions and widths were measured with the Sora glyphs against the Tagesring dial:
     // nothing comes within 10 px of its minute ring (radius 214), in either language.
     s_title = label(&font_sat_24b, C_AMBER, 3, 60, 300);
@@ -444,6 +438,24 @@ void init() {
         lv_obj_set_style_text_letter_space(n, 1, 0);
         lv_obj_add_flag(n, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+void delete_labels() {
+    for (lv_obj_t **o : { &s_title, &s_sub, &s_l1, &s_l2, &s_l3, &s_l4, &s_ring[0], &s_ring[1], &s_names[0], &s_names[1], &s_names[2] })
+        if (*o) { lv_obj_del(*o); *o = nullptr; }
+}
+
+}  // namespace
+
+namespace meshview {
+
+void init() {
+    void *mem = heap_caps_calloc(1, sizeof(Shared), MALLOC_CAP_SPIRAM);
+    if (mem) S = new (mem) Shared();
+    s_scr = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(s_scr, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(s_scr, LV_OBJ_FLAG_SCROLLABLE);
     s_timer = lv_timer_create(tick_cb, FRAME_MS, nullptr);
 }
 
@@ -458,6 +470,7 @@ void onEnter() {
     lv_canvas_set_buffer(s_canvas, s_pix, SCR, SCR, LV_IMG_CF_TRUE_COLOR);
     lv_obj_center(s_canvas);
     lv_obj_move_background(s_canvas);
+    build_labels();
     s_sel = -1; s_viewSeq = 0;
     portENTER_CRITICAL(&s_mux);
     S->view = S->pub; s_viewSeq = s_seq;
@@ -471,7 +484,7 @@ void onEnter() {
 
 void onExit() {
     s_active = false;
-    for (auto &n : s_names) lv_obj_add_flag(n, LV_OBJ_FLAG_HIDDEN);
+    delete_labels();
     release_all();
 }
 
