@@ -274,6 +274,7 @@ static void adsb_task(void*) {
     uint32_t adsbBackoffMs = 0;                // extra delay after feed failures (exponential, 30s cap)
     uint32_t nextWeatherAt = UINT32_MAX;       // armed five seconds after WiFi connects
     uint32_t nextWxRadarAt = UINT32_MAX;
+    int      wxFailStreak = 0;                 // failed cycles in a row, for the quick retries below
     int      wxFillIdx = WX_RADAR_FRAMES;      // which animation frame to fetch next (== FRAMES: idle)
     uint32_t wxGen = 0;                        // refresh generation, bumped each full loop
     uint32_t lastFeedOk = millis();          // self-heal: time of last good (or no-WiFi) poll
@@ -595,17 +596,25 @@ static void adsb_task(void*) {
                     wx_phase_set(wxFillIdx >= WX_RADAR_FRAMES ? WX_PHASE_READY : WX_PHASE_FRAMES,
                                  wxFillIdx, WX_RADAR_FRAMES);
                     nextWxRadarAt = millis() + (wxFillIdx >= WX_RADAR_FRAMES ? WX_RADAR_REFRESH_MS : 250UL);
+                    wxFailStreak = 0;
                 } else if (r == 0) {                   // fewer frames than the loop length — cycle done
                     if (wxFillIdx > 0) g_wxRadarDirty = true;
                     wx_phase_set(wxFillIdx > 0 ? WX_PHASE_READY : WX_PHASE_FAILED, wxFillIdx, WX_RADAR_FRAMES);
                     wxFillIdx = WX_RADAR_FRAMES;
                     nextWxRadarAt = millis() + WX_RADAR_REFRESH_MS;
-                } else {                               // error — retry the whole cycle in 60s
+                    wxFailStreak = 0;
+                } else {                               // error — retry soon, then every 60 s
                     wx_phase_set(WiFi.status() == WL_CONNECTED ? WX_PHASE_FAILED : WX_PHASE_NO_WIFI,
                                  wxFillIdx, WX_RADAR_FRAMES);
                     wxFillIdx = WX_RADAR_FRAMES;
-                    nextWxRadarAt = millis() + 60000UL;
-                    Serial.println("[wxradar] fetch failed; retrying in 60s");
+                    // A failure is usually one request that went unanswered, not an outage: in a
+                    // 35-minute soak on a real Orb (2026-10-11) four of nine cycles timed out once
+                    // and the next attempt went through. Waiting a full minute each time left the
+                    // screen on "updating" for that minute. Two quick retries, then the minute.
+                    const uint32_t wait = wxFailStreak < 2 ? 10000UL : 60000UL;
+                    ++wxFailStreak;
+                    nextWxRadarAt = millis() + wait;
+                    Serial.printf("[wxradar] fetch failed; retrying in %lus\n", (unsigned long)(wait / 1000));
                 }
             }
             // Satellite clouds (EUMETSAT) is no longer reachable from the Weather app's
