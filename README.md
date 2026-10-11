@@ -42,6 +42,7 @@ taken or left on its own.
 - **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself; Settings → Livestream → Show app takes it out of the menu without forgetting the URL.
 - **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
 - **Earth** ("Erde"): the globe from space over your home, NASA day and night imagery, the real sun with a soft twilight band and city lights. Turn the knob to spin it; it glides home after 5 s. Needs `day.jpg` and `night.jpg` from the release in `/earth/` on the SD card.
+- **Satellites** ("Satelliten"): the ISS, Tiangong, Hubble and the James Webb telescope over the same NASA globe, which follows the satellite with it in a reticle at the centre. Its next 90 minutes are drawn ahead in amber, the last 40 dashed behind, with the circle of ground that can see it now and your home by name. Below: height and speed, and the next pass over home with the time, how high it climbs, from where to where, and whether you can see it (lit by the sun while your sky is dark). Turn the knob to step through the four. Orbits come from [CelesTrak](https://celestrak.org) once a day and are computed on the Orb (SGP4); Webb circles the L2 point 1.5 million km out, so it comes from a JPL Horizons table built into the firmware instead and shows its distance, light time and when it rises. Settings → Satellites → Show app hides it and stops the download. Uses the Earth app's pictures.
 - **Weather radar** is back in the build: rain only (no weak echoes), the full round display, 40 km, one frame every five minutes, with the town's name.
 - **News** is compiled out of this build (`NEWS_ENABLED 0`).
 
@@ -81,6 +82,12 @@ taken or left on its own.
 
 **The Tagesring theme** ([`themes/techtobi/`](themes/techtobi/), drawn by [`tools/theme_techtobi.py`](tools/theme_techtobi.py)): a chronometer dial with the day ring and a swinging balance wheel, an Iron Orbit start screen, amber menus and an amber flight tracker, and the same full-size frame on the weather map and the Livestream.
 
+**Taken from Zion's repo** (each with its author kept and a note of the original commit):
+- Older and smaller SD cards (2 GB and under) are run slower instead of being reported as no card.
+- The flight feed drops an address that keeps refusing, instead of retrying it until a reboot.
+- Themes with a long name (20 characters or more) find their baked art again. The first start after updating re-bakes it once.
+- The Orb's web page loads when memory is short, `/legacy` no longer hangs, and the front page no longer links to an update page this build does not have.
+
 **Over the cable** (`?orb ...`): `special-test`, `night`, `lang`, and `wifi` now lists the remembered networks.
 
 ### Install this fork
@@ -90,7 +97,7 @@ For an Orb built on the Waveshare ESP32-S3-Touch-AMOLED-1.75. You need a USB-C c
 1. **Download** from the [latest release](https://github.com/Techtobi83/orb-os/releases/latest), under *Assets*: `orb-os-<version>-full.bin`, `earth-images.zip` for the Earth app, and if you want the theme, `theme-tagesring-techtobi.zip`.
 2. **Flash in the browser:** open Espressif's web flasher at <https://espressif.github.io/esptool-js/>, plug the Orb in, click **Connect** and pick its port. Set *Flash Address* to **`0x0`**, choose `orb-os-<version>-full.bin`, click **Program**, and wait a minute or two. The Orb restarts and asks for WiFi.
 3. **Theme (optional):** unzip onto the microSD card so it holds `/themes/techtobi/`, put the card in, and choose **Tagesring** under Settings → Theme. The first start after that takes about 15 s while the artwork is prepared.
-4. **Earth app:** unzip `earth-images.zip` onto the microSD card so it holds `/earth/day.jpg` and `/earth/night.jpg`. Without them the Earth screen says the pictures are missing; everything else works.
+4. **Earth and Satellites apps:** unzip `earth-images.zip` onto the microSD card so it holds `/earth/day.jpg` and `/earth/night.jpg`. Without them both screens say the pictures are missing; everything else works.
 
 Good to know:
 - The full image **erases WiFi and settings**; set them up once afterwards.
@@ -203,6 +210,7 @@ src/
   radar_view.*        the flight tracker scope (and the weather radar, out of launch one)
   intel_view.*        the news screen  (named intel for historical reasons)
   livecam_view.*      the Livestream app (network camera)
+  sat_view.*          the Satellites app (SGP4 worker, NASA globe); jwst_ephem.h is its Webb table
   settings_view.*     the settings wheel
   spycam_view.*       surveillance (out of launch one)
   theme_style.*       the theme model and THEME_CAPS
