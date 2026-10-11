@@ -11,7 +11,7 @@
 namespace globeview {
 void      init();
 lv_obj_t *screen();
-void      onEnter(double homeLat, double homeLon);   // loads the pictures, builds the view
+void      onEnter(double homeLat, double homeLon, const char *homeName);   // loads the pictures, builds the view
 void      onExit();                                  // gives every buffer back
 void      onTurn(int delta);
 }

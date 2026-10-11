@@ -12,6 +12,9 @@
 #include "theme_sd.h"
 #include "diag_log.h"
 
+LV_FONT_DECLARE(font_sat_18);   // Sora, shared with the Satellites app
+LV_FONT_DECLARE(font_sat_12);
+
 // How it is drawn, and why it is fast enough.
 //
 // The globe is an orthographic projection seen from above the home latitude. Spinning the
@@ -37,6 +40,17 @@ constexpr uint32_t HOME_AFTER_MS = 5000;          // stillness before it glides 
 constexpr uint32_t TICK_MS = 40;
 
 lv_obj_t   *s_scr = nullptr, *s_canvas = nullptr, *s_msg = nullptr;
+// The time, small, in the lower fifth over the globe. Over the bright day side white alone
+// would vanish, so a black copy one pixel down and right sits behind it as a shadow.
+lv_obj_t   *s_time = nullptr, *s_timeShadow = nullptr;
+int         s_shownMinute = -1;
+// Home: a small dot with a ring and the place's name, as on the Satellites screen. It moves
+// with the globe when the knob spins it and hides when home turns to the far side.
+lv_obj_t   *s_home = nullptr, *s_homeShadow = nullptr;
+float       s_homeLat = 0, s_homeLon = 0;
+char        s_homeName[40] = "";
+constexpr int TIME_Y = 400;                       // centre of the line, of 466
+
 lv_timer_t *s_timer = nullptr;
 lv_color_t *s_pix = nullptr;                     // canvas, SCR x SCR
 // The big tables are held in bands of rows, never in one block. After a few hours of uptime
@@ -215,6 +229,37 @@ void sun_now(int &sunCol, int16_t &sinS, int16_t &cosS) {
     sunCol = (int)(c / 360.0 * TEX_W) % TEX_W;
 }
 
+inline void blend(int x, int y, lv_color_t c, uint8_t a) {
+    if ((unsigned)x >= (unsigned)SCR || (unsigned)y >= (unsigned)SCR) return;
+    lv_color_t &d = s_pix[y * SCR + x];
+    d = lv_color_mix(c, d, a);
+}
+
+// Where home is on the glass for a view turned rotDeg away from it, or hidden.
+void draw_home(float rotDeg) {
+    const float D2R = (float)M_PI / 180.0f;
+    const float lat0 = (s_homeLat - VIEW_LAT_BELOW_HOME) * D2R, lon0 = (s_homeLon + rotDeg) * D2R;
+    const float lat = s_homeLat * D2R, d = s_homeLon * D2R - lon0;
+    const float cl = cosf(lat), sl = sinf(lat), cd = cosf(d);
+    const float z = sl * sinf(lat0) + cl * cosf(lat0) * cd;
+    if (z < 0.05f) {
+        lv_obj_add_flag(s_home, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(s_homeShadow, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    const float x = SCR / 2.0f + R * cl * sinf(d), y = SCR / 2.0f - R * (sl * cosf(lat0) - cl * sinf(lat0) * cd);
+    const lv_color_t ink = lv_color_hex(0xF2F0EA);
+    for (int yy = (int)y - 9; yy <= (int)y + 9; ++yy)
+        for (int xx = (int)x - 9; xx <= (int)x + 9; ++xx) {
+            const float r = sqrtf((xx + 0.5f - x) * (xx + 0.5f - x) + (yy + 0.5f - y) * (yy + 0.5f - y));
+            if (r <= 3.4f) blend(xx, yy, ink, 255);                                   // the dot
+            else if (r > 5.4f && r < 7.0f) blend(xx, yy, ink, 170);                   // the ring
+            else if (r >= 3.4f && r < 7.8f) blend(xx, yy, lv_color_black(), 90);     // a dark edge for the day side
+        }
+    lv_obj_set_pos(s_home, (lv_coord_t)(x + 11), (lv_coord_t)(y - 8));
+    lv_obj_set_pos(s_homeShadow, (lv_coord_t)(x + 12), (lv_coord_t)(y - 7));
+    lv_obj_clear_flag(s_home, LV_OBJ_FLAG_HIDDEN); lv_obj_clear_flag(s_homeShadow, LV_OBJ_FLAG_HIDDEN);
+}
+
 void render(int rot, int sunCol, int16_t sinS, int16_t cosS) {
     for (int y = 0; y < SCR; ++y) {
         if (s_x1[y] < s_x0[y]) continue;
@@ -244,7 +289,22 @@ void render(int rot, int sunCol, int16_t sinS, int16_t cosS) {
     lv_obj_invalidate(s_canvas);
 }
 
+void update_time() {
+    const time_t now = time(nullptr);
+    if (now < 1700000000) return;                 // no clock yet: leave it blank
+    struct tm t;
+    localtime_r(&now, &t);
+    const int m = t.tm_hour * 60 + t.tm_min;
+    if (m == s_shownMinute) return;
+    s_shownMinute = m;
+    char b[8];
+    snprintf(b, sizeof(b), "%02d:%02d", t.tm_hour, t.tm_min);
+    lv_label_set_text(s_time, b);
+    lv_label_set_text(s_timeShadow, b);
+}
+
 void tick_cb(lv_timer_t *) {
+    if (s_active) update_time();
     if (!s_active || !s_lutReady) return;
     // Glide home: after a few seconds of stillness the spin decays to zero, the short way.
     if (s_offsetDeg != 0 && millis() - s_lastTurnMs > HOME_AFTER_MS) {
@@ -258,6 +318,7 @@ void tick_cb(lv_timer_t *) {
     s_drawnRot = rot; s_drawnSun = sunCol;
     const uint32_t t0 = micros();
     render(rot, sunCol, sinS, cosS);
+    draw_home((float)rot * 360.0f / TEX_W);
     static uint32_t s_logged = 0;
     if (millis() - s_logged > 3000) { s_logged = millis(); Serial.printf("[globe] frame %lu us\n", (unsigned long)(micros() - t0)); }
 }
@@ -292,15 +353,47 @@ void init() {
     lv_obj_set_style_text_align(s_msg, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(s_msg);
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
+    for (lv_obj_t **l : { &s_timeShadow, &s_time }) {
+        *l = lv_label_create(s_scr);
+        lv_obj_set_style_text_font(*l, &font_sat_18, 0);
+        lv_obj_set_style_text_letter_space(*l, 1, 0);
+        lv_label_set_text(*l, "");
+    }
+    lv_obj_set_style_text_color(s_time, lv_color_hex(0xF2F0EA), 0);
+    lv_obj_set_style_text_color(s_timeShadow, lv_color_black(), 0);
+    lv_obj_set_style_text_opa(s_timeShadow, LV_OPA_70, 0);
+    lv_obj_align(s_time, LV_ALIGN_TOP_MID, 0, TIME_Y - 12);
+    lv_obj_align(s_timeShadow, LV_ALIGN_TOP_MID, 1, TIME_Y - 11);
+    for (lv_obj_t **l : { &s_homeShadow, &s_home }) {
+        *l = lv_label_create(s_scr);
+        lv_obj_set_style_text_font(*l, &font_sat_12, 0);
+        lv_obj_set_style_text_letter_space(*l, 1, 0);
+        lv_label_set_text(*l, "");
+        lv_obj_add_flag(*l, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_obj_set_style_text_color(s_home, lv_color_hex(0xF2F0EA), 0);
+    lv_obj_set_style_text_color(s_homeShadow, lv_color_black(), 0);
+    lv_obj_set_style_text_opa(s_homeShadow, LV_OPA_70, 0);
     s_timer = lv_timer_create(tick_cb, TICK_MS, nullptr);
 }
 
 lv_obj_t *screen() { return s_scr; }
 
-void onEnter(double homeLat, double homeLon) {
+void onEnter(double homeLat, double homeLon, const char *homeName) {
+    s_homeLat = (float)homeLat; s_homeLon = (float)homeLon;
+    // The name in capitals, German umlauts included (UTF-8 0xC3 0xA4/B6/BC -> 0x84/96/9C).
+    snprintf(s_homeName, sizeof(s_homeName), "%s", (homeName && *homeName) ? homeName : tr("HOME", "ZUHAUSE"));
+    for (char *p = s_homeName; *p; ++p) {
+        if (*p >= 'a' && *p <= 'z') *p -= 32;
+        else if ((uint8_t)p[0] == 0xC3 && ((uint8_t)p[1] == 0xA4 || (uint8_t)p[1] == 0xB6 || (uint8_t)p[1] == 0xBC)) { p[1] -= 0x20; ++p; }
+    }
+    lv_label_set_text(s_home, s_homeName);
+    lv_label_set_text(s_homeShadow, s_homeName);
     const uint32_t t0 = millis();
     lv_obj_add_flag(s_msg, LV_OBJ_FLAG_HIDDEN);
     s_offsetDeg = 0; s_drawnRot = s_drawnSun = INT32_MIN;
+    s_shownMinute = -1;                           // the time is set on the first tick
+    lv_obj_add_flag(s_home, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(s_homeShadow, LV_OBJ_FLAG_HIDDEN);   // until drawn
     s_pix   = (lv_color_t *)heap_caps_malloc((size_t)SCR * SCR * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     T = (Tables *)heap_caps_calloc(1, sizeof(Tables), MALLOC_CAP_SPIRAM);
     bool ok = s_pix != nullptr && T != nullptr;
@@ -361,7 +454,7 @@ void onTurn(int delta) {
 namespace globeview {
 void init() {}
 lv_obj_t *screen() { return nullptr; }
-void onEnter(double, double) {}
+void onEnter(double, double, const char *) {}
 void onExit() {}
 void onTurn(int) {}
 }

@@ -3437,7 +3437,11 @@ void setup() {
 #if GLOBE_ENABLED
     globeview::init();
     app_shell::add(globeview::screen(), GLOBE_NAME, nullptr, globeview::onTurn, false,
-                   []() { globeview::onEnter(g_settings.homeLat, g_settings.homeLon); },
+                   []() {
+                       char name[40] = "";
+                       host_location_name(name, sizeof(name));
+                       globeview::onEnter(g_settings.homeLat, g_settings.homeLon, name);
+                   },
                    globeview::onExit, false);   // turning spins the globe; it glides home after 5 s
 #endif
 #if SAT_ENABLED
