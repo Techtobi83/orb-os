@@ -154,6 +154,7 @@ bool get_json(const char *path, JsonDocument &doc, JsonDocument &filter) {
     snprintf(url, sizeof(url), "%s%s/%s", MESH_API_BASE, s_id, path);
     uint8_t *body = nullptr; size_t len = 0;
     bool got = false;
+    NetTlsPermit tls;                                  // the only caller that is given TLS
     for (int attempt = 0; attempt < 2 && !got; ++attempt) {
         if (attempt) vTaskDelay(pdMS_TO_TICKS(1000));
         got = net_fetch_psram(url, ADSB_USER_AGENT, &body, &len, 96 * 1024, 6000, 20000);

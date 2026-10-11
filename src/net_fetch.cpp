@@ -7,6 +7,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <esp_heap_caps.h>
+#include "mbedtls/platform.h"
 
 bool net_fetch_psram(const char *url, const char *userAgent,
                      uint8_t **out, size_t *outLen, size_t maxLen,
@@ -151,3 +152,29 @@ bool net_fetch_psram(const char *url, const char *userAgent,
     return true;
 }
 #endif
+
+// ---- TLS: the allocator and the permit (net_fetch.h) ----------------------------------------
+//
+// This build's mbedTLS allocates internally (INTERNAL_MEM_ALLOC), and a handshake needs two
+// 16 KB record buffers in one piece each on a heap whose largest free internal block is under
+// 10 KB, so every https:// fetch failed at connect ("HTTP -1 over TLS"). MBEDTLS_PLATFORM_MEMORY
+// is on without the calloc macros, so the allocator can be swapped at runtime.
+//
+// With a permit held, everything goes to PSRAM first. Only the big buffers in PSRAM was tried
+// and was not enough: records then failed part way (TLS error 0x31) with the largest internal
+// block at 7 KB; with everything in PSRAM the MeshCore analyzer's JSON arrives every time.
+// Without a permit it allocates exactly as the stock esp_mbedtls_mem_calloc does, internal
+// only, so nothing that did not ask for TLS behaves any differently from before 2.33.0.
+static volatile int s_tlsPermits = 0;
+
+static void *tls_calloc(size_t n, size_t size) {
+    if (s_tlsPermits > 0) {
+        void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM);
+        return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    }
+    return heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+static void tls_free(void *p) { heap_caps_free(p); }
+
+void net_tls_install() { mbedtls_platform_set_calloc_free(tls_calloc, tls_free); }
+void net_tls_permit(bool on) { s_tlsPermits = s_tlsPermits + (on ? 1 : -1); if (s_tlsPermits < 0) s_tlsPermits = 0; }
