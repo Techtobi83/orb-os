@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.32.1"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.33.0"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -78,6 +78,19 @@
 #define SAT_TLE_URL      "http://celestrak.org/NORAD/elements/gp.php?FORMAT=tle&CATNR="
 #define SAT_TLE_MAX_AGE_S  (24 * 3600)    // fetch fresh elements once a day
 #define SAT_TLE_RETRY_MS   (5 * 60000UL)  // after a failed fetch
+
+// "MeshCore": the owner's MeshCore repeater and its neighbours over the weather map's roads
+// (mesh_view.cpp). Turning steps from neighbour to neighbour. The figures come from the
+// MeshCore analyzer's JSON (not a documented API: observer stations hear the repeater, so it
+// needs no registration). HTTPS, every 15 minutes, and only while the page is open. The node
+// is chosen at http://theorb.local/meshcore and kept in NVS; nothing about it is compiled in.
+#define MESH_ENABLED      1
+#define MESH_NAME         "MeshCore"
+#define MESH_API_BASE     "https://analyzer.meshcorenetz.de/api/nodes/"
+#define MESH_REFRESH_MS   (15 * 60000UL)
+#define MESH_RETRY_MS     (2 * 60000UL)  // after a failed fetch
+#define MESH_RANGE_KM     40             // map radius at the rim
+#define MESH_IDLE_MS      6000           // a chosen neighbour falls back to the overview after this
 
 // ---------- Touch: swipe sideways to change app ----------
 // The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds

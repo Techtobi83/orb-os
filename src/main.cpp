@@ -52,6 +52,7 @@
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
 #include "touch_swipe.h"             // sideways swipe on the glass (TOUCH_SWIPE_ENABLED)
 #include "forecast_view.h"           // "Vorhersage", the forecast dial (FORECAST_ENABLED)
+#include "mesh_view.h"               // "MeshCore": the owner's repeater and its neighbours (MESH_ENABLED)
 #include "sat_view.h"                // "Satelliten": ISS, Tiangong, Hubble, Webb (SAT_ENABLED)
 #include "globe_view.h"              // "Erde", the globe with the real sun (GLOBE_ENABLED)
 #include "diag_log.h"                // RTC-memory event ring buffer, survives a reboot
@@ -514,6 +515,10 @@ static void adsb_task(void*) {
             // once a day, and none while the app is hidden. Here because this task owns the
             // sockets; the app's own worker has a PSRAM stack, which lwIP refuses.
             if (satview::tleWanted()) satview::fetchTle();
+#endif
+#if MESH_ENABLED
+            // The MeshCore page's figures: two HTTPS requests, every 15 minutes, only while it is open.
+            if (meshview::fetchWanted()) meshview::fetch();
 #endif
             // Weather radar animation: fetch the past frames one per pass (not all 9 in one
             // blocking burst) so each ~2-3s tile fetch yields back to the live ADS-B poll
@@ -1028,6 +1033,47 @@ void host_sats_set_shown(bool on) {
     satview::setShown(on);
     app_shell::setHidden(app_shell::APP_SATS, !on);
 #endif
+}
+
+// Settings > MeshCore > Show app, and the node it shows (http://theorb.local/meshcore).
+// The node is 64 hex characters; the page accepts the analyzer's own link to it as well.
+static bool g_meshShown = true, g_meshLoaded = false;
+static char g_meshId[80] = "";
+static void mesh_load() {
+    if (g_meshLoaded) return;
+    Preferences p; p.begin("capsuleradar", true);
+    g_meshShown = p.getBool("meshShow", true);
+    if (p.isKey("meshId")) p.getString("meshId", g_meshId, sizeof(g_meshId));
+    p.end();
+    g_meshLoaded = true;
+}
+bool host_mesh_shown() { mesh_load(); return g_meshShown; }
+void host_mesh_set_shown(bool on) {
+    mesh_load(); g_meshShown = on;
+    Preferences p; p.begin("capsuleradar", false); p.putBool("meshShow", on); p.end();
+#if MESH_ENABLED
+    meshview::setShown(on);
+    app_shell::setHidden(app_shell::APP_MESH, !on);
+#endif
+}
+void host_mesh_id_get(char *out, size_t n) { mesh_load(); snprintf(out, n, "%s", g_meshId); }
+// Takes the first run of 64 hex characters in whatever was pasted, so the analyzer's link
+// works as well as the bare key. Anything else clears it.
+void host_mesh_id_set(const char *in) {
+    mesh_load();
+    char id[65] = "";
+    for (const char *p = in ? in : ""; *p; ++p) {
+        int k = 0;
+        while (k < 64 && isxdigit((unsigned char)p[k])) ++k;
+        if (k == 64 && !isxdigit((unsigned char)p[64])) { for (int i = 0; i < 64; ++i) id[i] = tolower((unsigned char)p[i]); id[64] = 0; break; }
+        if (k) p += k - 1;
+    }
+    snprintf(g_meshId, sizeof(g_meshId), "%s", id);
+    Preferences p; p.begin("capsuleradar", false); p.putString("meshId", g_meshId); p.end();
+#if MESH_ENABLED
+    meshview::setNodeId(g_meshId);
+#endif
+    diag::log("meshcore node %s", g_meshId[0] ? "set" : "cleared");
 }
 
 // Settings > Livestream > Show app. Off takes the Livestream out of the app menu (and out of
@@ -2754,6 +2800,30 @@ static void handleLivestream() {
     g_web.send(200, "text/html", h);
 }
 
+// http://theorb.local/meshcore: which MeshCore node the MeshCore page shows.
+static void handleMeshcore() {
+    const bool saved = g_web.hasArg("id");
+    if (saved) host_mesh_id_set(g_web.arg("id").c_str());
+    char id[80]; host_mesh_id_get(id, sizeof(id));
+    String h;
+    h.reserve(1500);
+    h += "<!doctype html><html><head><meta charset=utf-8>"
+         "<meta name=viewport content='width=device-width,initial-scale=1'>"
+         "<title>MeshCore</title><style>"
+         "body{font-family:system-ui,sans-serif;background:#111;color:#eee;max-width:34em;margin:2em auto;padding:0 1em}"
+         "input{width:100%;box-sizing:border-box;font-size:1em;padding:.5em;margin:.5em 0;background:#222;color:#eee;border:1px solid #555}"
+         "button{font-size:1em;padding:.5em 1.5em}p.s{color:#8c8}p.e{color:#e88}small{color:#999}"
+         "</style></head><body><h2>MeshCore</h2>";
+    if (saved) h += id[0] ? "<p class=s>Saved. The Orb fetches this node now.</p>" : "<p class=e>No node key found in that; the node is cleared.</p>";
+    h += "<form method=post action=/meshcore><label>Node (its public key, or the analyzer's link to it)<input name=id value=\"";
+    html_escape_into(h, id);
+    h += "\" placeholder='https://analyzer.meshcorenetz.de/#node?id=...'></label>"
+         "<button type=submit>Save</button></form>"
+         "<p><small>Find your repeater on analyzer.meshcorenetz.de, open it, and paste the address "
+         "from the browser here. Leave it empty to clear it.</small></p></body></html>";
+    g_web.send(200, "text/html", h);
+}
+
 static void handleIdle() {   // idle auto-dim timeout (seconds; 0 = never)
     if (g_web.hasArg("v")) {
         const long s = g_web.arg("v").toInt();
@@ -3475,6 +3545,17 @@ void setup() {
                    },
                    satview::onExit, !host_sats_shown());   // turning steps through the satellites
 #endif
+#if MESH_ENABLED
+    meshview::init();
+    {
+        char id[80]; host_mesh_id_get(id, sizeof(id));
+        meshview::setNodeId(id);
+        meshview::setShown(host_mesh_shown());
+    }
+    psram_mark("after meshview");
+    app_shell::add(meshview::screen(), MESH_NAME, nullptr, meshview::onTurn, false,
+                   meshview::onEnter, meshview::onExit, !host_mesh_shown());   // turning steps from neighbour to neighbour
+#endif
 #if !APPS_LAUNCH_ONE
     spycamview::init();
     psram_mark("after spycamview");
@@ -3946,6 +4027,7 @@ void setup() {
     g_web.on("/alerts", handleAlerts);
     g_web.on("/idle", handleIdle);
     g_web.on("/livestream", handleLivestream);   // the Livestream app's camera URL
+    g_web.on("/meshcore", handleMeshcore);       // the MeshCore page's node
     g_web.on("/sweep", handleSweep);
     g_web.on("/airports", handleAirports);
     g_web.on("/ground", handleGround);

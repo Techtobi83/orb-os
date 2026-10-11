@@ -194,6 +194,8 @@ void host_sound_preview_special() {}
 void host_special_test(bool) {}
 bool host_livestream_shown() { return true; }
 bool host_sats_shown() { return true; }
+bool host_mesh_shown() { return true; }
+void host_mesh_set_shown(bool) {}
 void host_sats_set_shown(bool) {}
 void host_livestream_set_shown(bool) {}
 int host_get_night_mode() { return 0; }

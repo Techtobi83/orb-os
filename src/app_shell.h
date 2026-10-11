@@ -62,6 +62,9 @@ namespace app_shell {
 #if SAT_ENABLED
         APP_SATS,        // "Satelliten" (config.h, sat_view.cpp)
 #endif
+#if MESH_ENABLED
+        APP_MESH,        // "MeshCore" (config.h, mesh_view.cpp)
+#endif
 #if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif
