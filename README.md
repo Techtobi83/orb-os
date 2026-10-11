@@ -28,15 +28,16 @@ is what the fork adds or changes on top. Each item is its own commit, so any of 
 taken or left on its own.
 
 <p align="center">
-  <img src="docs/img/fork-clock.jpg" width="400" alt="The Orb on its Iron Orbit stand, showing the Tagesring clock: a chronometer dial with an amber 24-hour day ring, sunrise and sunset times, a balance wheel window and a weekday date window">
-  <img src="docs/img/fork-satellites.jpg" width="400" alt="The Satellites app in German: James Webb over the night side of the globe with an amber graticule and the reticle at the centre, a thin blue atmosphere, the home town Balve marked, and below it 1.40 million km, light 4.7 s, above the horizon at 12 degrees west">
+  <img src="docs/img/fork-clock.jpg" width="270" alt="The Orb on its Iron Orbit stand, showing the Tagesring clock: a chronometer dial with an amber 24-hour day ring, sunrise and sunset times, a balance wheel window and a weekday date window">
+  <img src="docs/img/fork-satellites.jpg" width="270" alt="The Satellites app in German: James Webb over the night side of the globe with an amber graticule and the reticle at the centre, a thin blue atmosphere, the home town Balve marked, and below it 1.40 million km, light 4.7 s, above the horizon at 12 degrees west">
+  <img src="docs/img/fork-meshcore.jpg" width="270" alt="The MeshCore page in German: the repeater DE-NW-MK-Balve1 at the centre of a road map with 10 and 20 km rings, amber links with light running along them to its neighbour repeaters, and below it 2,424 relayed in 24 hours and 236 in the last hour">
 </p>
 
 <p align="center">
-  <img src="docs/img/fork-flight.jpg" width="205" alt="The flight tracker in the Tagesring theme: amber aircraft, sweep and range rings over the road map inside the frame, with a card for a Boeing 737 at 1225 ft">
-  <img src="docs/img/fork-forecast.jpg" width="205" alt="The forecast dial: 20 degrees and overcast, a day ring with sunrise and sunset, and tomorrow's high, low and rain chance, in German">
-  <img src="docs/img/fork-weather.jpg" width="205" alt="An early version of the returning weather radar: precipitation around the home town under the sweep">
-  <img src="docs/img/fork-earth.jpg" width="205" alt="The Earth app: the globe from space over Europe and Africa in daylight, with a thin blue atmosphere at the edge of the round display">
+  <img src="docs/img/fork-flight.jpg" width="203" alt="The flight tracker in the Tagesring theme: amber aircraft, sweep and range rings over the road map inside the frame, with a card for a Boeing 737 at 1225 ft">
+  <img src="docs/img/fork-forecast.jpg" width="203" alt="The forecast dial: 20 degrees and overcast, a day ring with sunrise and sunset, and tomorrow's high, low and rain chance, in German">
+  <img src="docs/img/fork-weather.jpg" width="203" alt="An early version of the returning weather radar: precipitation around the home town under the sweep">
+  <img src="docs/img/fork-earth.jpg" width="203" alt="The Earth app: the globe from space over Europe and Africa in daylight, with a thin blue atmosphere at the edge of the round display">
 </p>
 
 **New and returning apps**
