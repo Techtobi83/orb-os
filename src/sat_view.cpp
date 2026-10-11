@@ -67,7 +67,7 @@ constexpr int SCR = SCREEN_W;
 // first line below, where the limb darkening keeps the text readable. The dots that say
 // which satellite this is stand in a column to its left, where the round screen has room.
 constexpr int GCX = 233, GCY = 220, GR = 124;     // the globe
-constexpr int HALO = 12;                          // the amber atmosphere outside the limb
+constexpr int HALO = 9;                           // the atmosphere outside the limb, as the Earth app's
 constexpr int BOX = 2 * (GR + HALO + 4), BOX_X0 = GCX - BOX / 2, BOX_Y0 = GCY - BOX / 2;
 constexpr int TEX_W = 768, TEX_H = 384;           // the Earth app's pictures
 constexpr int BAND = 32, NBAND_TEX = (TEX_H + BAND - 1) / BAND;
@@ -78,6 +78,7 @@ constexpr float DEG = 57.29578f, RAD = 0.017453293f;
 const lv_color_t C_AMBER = LV_COLOR_MAKE(0xF5, 0xB3, 0x42);
 const lv_color_t C_INK   = LV_COLOR_MAKE(0xF2, 0xF0, 0xEA);
 const lv_color_t C_MUTED = LV_COLOR_MAKE(0xA8, 0xA3, 0x99);
+const lv_color_t C_SKY   = LV_COLOR_MAKE(0x40, 0x8C, 0xFF);   // the atmosphere
 
 // ---- elements: written by the feed task, read by the worker ----------------------------------
 struct Tle { char l1[72], l2[72]; };
@@ -563,8 +564,8 @@ void render_globe(int lut, float lon0) {
             const int dg = (t * (90 + ((166 * t) >> 8))) >> 8;
             const int nt = 255 - t, Ln = nightRow(v)[u];
             int rr = ((r8 * dg) >> 8) + ((((r8 * 13) >> 8) + Ln) * nt >> 8);
-            int gg = ((g8 * dg) >> 8) + ((((g8 * 13) >> 8) + ((Ln * 196) >> 8)) * nt >> 8);
-            int bb = ((b8 * dg) >> 8) + ((((b8 * 13) >> 8) + ((Ln * 112) >> 8)) * nt >> 8);
+            int gg = ((g8 * dg) >> 8) + ((((g8 * 13) >> 8) + ((Ln * 209) >> 8)) * nt >> 8);   // the Earth app's lights
+            int bb = ((b8 * dg) >> 8) + ((((b8 * 13) >> 8) + ((Ln * 140) >> 8)) * nt >> 8);
             const int lz = 140 + ((115 * z) >> 8);
             rr = (rr * lz) >> 8; gg = (gg * lz) >> 8; bb = (bb * lz) >> 8;
             if (rr > 255) rr = 255; if (gg > 255) gg = 255; if (bb > 255) bb = 255;
@@ -587,7 +588,7 @@ void reticle(float x, float y) {
 
 void draw_frame() {
     const Pub &v = S->view;
-    // the background behind the globe, with its halo
+    // the background behind the globe, with its atmosphere
     for (int r = 0; r < BOX; ++r) memcpy(s_pix + (BOX_Y0 + r) * SCR + BOX_X0, s_box + r * BOX, BOX * sizeof(lv_color_t));
     const float lat0 = v.posOk ? v.lat : s_homeLat * RAD, lon0 = v.posOk ? v.lon : s_homeLon * RAD;
     if (v.lut >= 0) { render_globe(v.lut, lon0); s_lutInUse = v.lut; }
@@ -739,7 +740,7 @@ lv_obj_t *label(const lv_font_t *f, lv_color_t c, int spacing, int y, int width)
 }
 
 // The background: the active theme's Settings plate when it has one (the Tagesring dial),
-// otherwise black with a thin amber rim. Then the halo, then a copy of what sits behind the
+// otherwise black with a thin amber rim. Then the atmosphere, then a copy of what sits behind the
 // globe, so every frame can put it back before painting the Earth.
 void paint_background() {
     const lv_img_dsc_t *plate = settings_custom_plate();
@@ -753,7 +754,8 @@ void paint_background() {
     for (int y = BOX_Y0; y < BOX_Y0 + BOX; ++y)
         for (int x = BOX_X0; x < BOX_X0 + BOX; ++x) {
             const float d = sqrtf((x + 0.5f - GCX) * (x + 0.5f - GCX) + (y + 0.5f - GCY) * (y + 0.5f - GCY)) - GR;
-            if (d > -1 && d < HALO) { const float g = 1.0f - (d + 1) / (HALO + 1); blend(x, y, C_AMBER, (uint8_t)(g * g * 90)); }
+            // the Earth app's thin blue atmosphere: (0.25, 0.55, 1.0) at g^2 * 0.55
+            if (d >= -1 && d < HALO) { const float g = 1.0f - (d + 1) / (HALO + 1); blend(x, y, C_SKY, (uint8_t)(g * g * 0.55f * 255)); }
         }
     for (int r = 0; r < BOX; ++r) memcpy(s_box + r * BOX, s_pix + (BOX_Y0 + r) * SCR + BOX_X0, BOX * sizeof(lv_color_t));
 }
