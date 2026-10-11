@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include "mbedtls/platform.h"   // mbedtls_platform_set_calloc_free: TLS buffers in PSRAM (setup)
 #include <ArduinoJson.h>
 #include <vector>
 #include <map>
@@ -3232,6 +3233,17 @@ static bool request_theme_switch(const char *slug) {
     return false;
 }
 
+// mbedTLS's allocator (see setup()): PSRAM first, internal RAM only if PSRAM cannot take it.
+// Only the big record buffers in PSRAM was tried first and was not enough: handshakes got
+// through, but records then failed part way ("connection lost", TLS error 0x31) on a heap
+// whose largest internal block was 7 KB. With every allocation in PSRAM the analyzer's
+// JSON arrived every time. The hardware AES and SHA work from PSRAM buffers on the S3.
+static void *tls_calloc(size_t n, size_t size) {
+    void *p = heap_caps_calloc(n, size, MALLOC_CAP_SPIRAM);
+    return p ? p : heap_caps_calloc(n, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+static void tls_free(void *p) { heap_caps_free(p); }
+
 void setup() {
     // Room for one full orb_link put-data line (~400 bytes) to ARRIVE IN ONE USB burst
     // while loop() is busy rendering a frame. The default RX ring is 256 bytes, so a
@@ -3271,6 +3283,14 @@ void setup() {
     // 2026-10-03). Allocations that must be internal (DMA, ISR, task stacks, the WiFi
     // driver's own) ask for it by capability and are not affected by this threshold.
     heap_caps_malloc_extmem_enable(512);
+
+    // TLS in PSRAM. This build's mbedTLS is set to INTERNAL_MEM_ALLOC, so the extmem
+    // threshold above never reaches it, and a handshake needs two 16 KB record buffers in one
+    // piece each on a heap whose largest free internal block is usually under 10 KB: every
+    // https:// fetch on this board failed at connect ("HTTP -1 over TLS", MeshCore,
+    // 2026-10-11), the flight photos included. MBEDTLS_PLATFORM_MEMORY is on without the
+    // calloc macros, so the allocator can be swapped here, before the first handshake.
+    mbedtls_platform_set_calloc_free(tls_calloc, tls_free);
 
     psram_mark("boot start");
     sdcard::begin();
@@ -3748,7 +3768,10 @@ void setup() {
     // just sit unused. That memory goes to the Weather Radar animation frames instead.
     g_ac_mutex = xSemaphoreCreateMutex();
     psram_mark("before adsb task");
-    xTaskCreatePinnedToCore(adsb_task, "adsb", 7168, nullptr, 1, &g_adsbTaskHandle, 0);
+    // 9 KB since 2.33.0, for TLS. With https:// working (see tls_calloc), a full handshake to
+    // the MeshCore analyzer measured 7.0 KB of this stack at its peak; at the old 7 KB that is
+    // an overflow, not a margin. 2 KB of internal RAM is the price of HTTPS on this task.
+    xTaskCreatePinnedToCore(adsb_task, "adsb", 9216, nullptr, 1, &g_adsbTaskHandle, 0);
     // 7168, not 6144. 6144 was tried and MEASURED: under a real fetch the high-water mark
     // fell to 1,012 bytes of headroom, which is not a margin, it is a fuse. A FreeRTOS stack
     // overflow is a hard crash and this task runs unattended for weeks. So the saving here is

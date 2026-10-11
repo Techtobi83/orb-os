@@ -43,6 +43,11 @@ bool net_fetch_psram(const char *url, const char *userAgent,
     const int code = http.GET();
     if (code != 200) {
         Serial.printf("[net] HTTP %d over %s: %s\n", code, secure ? "TLS" : "plain", url);
+        if (tls) {   // what TLS itself said, which the HTTP code does not
+            char why[120] = ""; const int e = tls->lastError(why, sizeof(why));
+            Serial.printf("[net] TLS error %d: %s  (internal largest %u, PSRAM largest %u)\n", e, why,
+                          (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+        }
         http.end(); return false;
     }
 
