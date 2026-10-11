@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <esp_heap_caps.h>
+#include <algorithm>
 #include <math.h>
 #include <new>
 #include <time.h>
@@ -278,6 +279,23 @@ void draw_pulses(int i, uint32_t now, uint8_t alpha) {
     }
 }
 
+// Keeps a name wholly inside the dial. A neighbour beyond the rim is drawn on the rim, and its
+// name then hung past the glass, cut in half by the bezel (seen on the owner's Orb, 2026-10-11).
+// The box is pulled in along its own row until all four corners are within NAME_R of the centre.
+constexpr float NAME_R = 200.0f;   // 10 px inside the Tagesring minute ring (radius 214)
+
+void keep_inside(lv_obj_t *o) {
+    lv_obj_update_layout(o);
+    const int w = lv_obj_get_width(o), h = lv_obj_get_height(o);
+    int x = lv_obj_get_x(o), y = lv_obj_get_y(o);
+    const int c = SCR / 2;
+    y = LV_CLAMP(c - (int)NAME_R + 2, y, c + (int)NAME_R - 2 - h);
+    const int far = std::max(abs(y - c), abs(y + h - c));          // the row edge farther from the centre
+    const int half = (int)sqrtf(std::max(0.0f, NAME_R * NAME_R - (float)far * far));
+    x = LV_CLAMP(c - half, x, c + half - w);
+    lv_obj_set_pos(o, x, y);
+}
+
 void place_name(int slot, int i) {
     char nm[32]; short_name(nm, sizeof(nm), S->view.nb[i].name);
     lv_label_set_text(s_names[slot], nm);
@@ -287,6 +305,7 @@ void place_name(int slot, int i) {
     const int x = (int)(p.x + 9 * sinf(p.b)) + (right ? 3 : -3 - sz.x);
     const int y = (int)(p.y - 9 * cosf(p.b)) - sz.y / 2;
     lv_obj_set_pos(s_names[slot], x, y);
+    keep_inside(s_names[slot]);
     lv_obj_clear_flag(s_names[slot], LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -363,7 +382,7 @@ void frame(uint32_t now) {
                     if (!clash) break;
                     y += cosf(s_pt[top[k]].b) >= 0 ? -13 : 13;
                 }
-                lv_obj_set_y(s_names[k], y); placed[np++] = y;
+                lv_obj_set_y(s_names[k], y); keep_inside(s_names[k]); placed[np++] = lv_obj_get_y(s_names[k]);
             }
         }
     }
