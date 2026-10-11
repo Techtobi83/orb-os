@@ -26,7 +26,10 @@ constexpr uint32_t MAGIC       = 0x4F524254;   // 'ORBT'
 // that already DECLARED its frames, so its fingerprint already counted them and the re-bake
 // check would have said "already baked and unchanged" forever, leaving the frames on the
 // card where the device never looks for them. Only a version bump resyncs that.
-constexpr uint32_t VERSION     = 7;
+// 8: the index holds the slug as a HASH instead of as char[20]. Every v7 entry's slug was
+// written truncated and compared untruncated, so a v7 cache belonging to a theme with a
+// long slug is a set of blobs nothing can address; rejecting it re-bakes from the card.
+constexpr uint32_t VERSION     = 8;
 constexpr size_t   INDEX_BYTES = 8192;         // two 4 KB sectors
 constexpr size_t   SECTOR      = 4096;
 
@@ -38,7 +41,20 @@ struct Header {
 };
 
 struct Entry {              // exactly 64 bytes, so the index size is trivially checkable
-    char     slug[20];
+    // THE SLUG AS A HASH, NOT AS TEXT, and the reason is worth the paragraph.
+    //
+    // This was char[20]. install_asset() wrote it with strncpy(e.slug, slug, 19), which
+    // truncates at nineteen characters and NUL-terminates; every reader compared twenty
+    // bytes. So for any slug of twenty characters or more the stored copy held '\0' at
+    // byte nineteen where the query held a real character, no compare could ever match,
+    // and the theme's art — baked, verified, committed, reported as "committed 15
+    // asset(s)" — was unaddressable for the life of the theme. Celestial's
+    // 'celestial-animated-qvym' is 23 characters, so it re-baked for 38 seconds on every
+    // boot and found nothing each time; and because the animation frames have no SD
+    // fallback by design, the dial simply never moved.
+    //
+    // Hashing the WHOLE slug has no length limit to get wrong.
+    uint32_t slugHash;
     char     name[24];
     uint32_t offset;        // from partition start
     uint32_t len;
@@ -47,6 +63,7 @@ struct Entry {              // exactly 64 bytes, so the index size is trivially 
     uint8_t  fmt;
     uint8_t  pad[3];
     uint32_t manifest;      // theme_style::assetsFingerprint() for THIS entry's theme
+    char     slugPrefix[16];  // LOGS ONLY. Never compared — comparing it was the bug.
 };
 static_assert(sizeof(Entry) == 64, "Entry must stay 64 bytes: the index size depends on it");
 constexpr size_t MAX_ENTRIES = (INDEX_BYTES - sizeof(Header)) / sizeof(Entry);
@@ -68,6 +85,17 @@ uint32_t    s_insManifest = 0;
 // keeping other themes' entries. 466x466 with alpha is 636 KB, and a theme runs to ~13
 // of those and their smaller siblings.
 constexpr uint32_t FULL_THEME_BYTES = 4u * 1024 * 1024;
+
+// FNV-1a over the whole slug, however long it is. Must stay stable: it is written into
+// flash, so changing it silently orphans every baked entry. Bump VERSION if it ever moves.
+uint32_t slug_hash(const char *s) {
+    uint32_t h = 2166136261u;
+    for (; s && *s; ++s) {
+        h ^= (uint8_t)*s;
+        h *= 16777619u;
+    }
+    return h;
+}
 
 bool map_partition() {
     if (s_mapped) { esp_partition_munmap(s_map); s_mapped = nullptr; s_map = 0; }
@@ -118,9 +146,10 @@ bool begin() {
 bool lookup(const char *slug, const char *assetName,
             const uint8_t *&out, int &w, int &h, Format &fmt) {
     if (!s_mapped || !s_hdr.count || !slug || !slug[0] || !assetName) return false;
+    const uint32_t want = slug_hash(slug);
     for (uint32_t i = 0; i < s_hdr.count; ++i) {
         const Entry &e = s_index[i];
-        if (strncmp(e.slug, slug, sizeof(e.slug)) != 0) continue;
+        if (e.slugHash != want) continue;
         if (strncmp(e.name, assetName, sizeof(e.name)) != 0) continue;
         out = (const uint8_t *)s_mapped + e.offset;   // straight into flash, never freed
         w   = e.w;
@@ -133,9 +162,10 @@ bool lookup(const char *slug, const char *assetName,
 
 bool find_blob(const char *slug, const char *assetName, const uint8_t *&data, size_t &len) {
     if (!s_mapped || !s_hdr.count || !slug || !slug[0] || !assetName) return false;
+    const uint32_t want = slug_hash(slug);
     for (uint32_t i = 0; i < s_hdr.count; ++i) {
         const Entry &e = s_index[i];
-        if (strncmp(e.slug, slug, sizeof(e.slug)) != 0) continue;
+        if (e.slugHash != want) continue;
         if (strncmp(e.name, assetName, sizeof(e.name)) != 0) continue;
         data = (const uint8_t *)s_mapped + e.offset;
         len  = e.len;
@@ -166,15 +196,17 @@ const uint8_t *find_active(const char *assetName, Format wantFmt, int &w, int &h
 
 bool slug_baked(const char *slug) {
     if (!s_mapped || !s_hdr.count || !slug || !slug[0]) return false;
+    const uint32_t want = slug_hash(slug);
     for (uint32_t i = 0; i < s_hdr.count; ++i)
-        if (strncmp(s_index[i].slug, slug, sizeof(s_index[i].slug)) == 0) return true;
+        if (s_index[i].slugHash == want) return true;
     return false;
 }
 
 uint32_t baked_manifest(const char *slug) {
     if (!s_mapped || !s_hdr.count || !slug || !slug[0]) return 0;
+    const uint32_t want = slug_hash(slug);
     for (uint32_t i = 0; i < s_hdr.count; ++i)
-        if (strncmp(s_index[i].slug, slug, sizeof(s_index[i].slug)) == 0)
+        if (s_index[i].slugHash == want)
             return s_index[i].manifest;
     return 0;
 }
@@ -196,8 +228,9 @@ bool install_begin(const char *slug, uint32_t manifestFingerprint) {
     // ~3.8 MB, so two can live here at once and switching between them costs nothing;
     // wiping on every bake would make each switch pay the full conversion again.
     uint32_t kept = 0, end = 0;
+    const uint32_t wantSlug = slug_hash(slug);
     for (uint32_t i = 0; i < s_hdr.count; ++i) {
-        if (strncmp(s_index[i].slug, slug, sizeof(s_index[i].slug)) == 0) continue;  // replacing this one
+        if (s_index[i].slugHash == wantSlug) continue;  // replacing this one
         if (kept != i) s_index[kept] = s_index[i];
         const uint32_t e = (s_index[kept].offset - INDEX_BYTES)
                          + (uint32_t)((s_index[kept].len + SECTOR - 1) & ~(SECTOR - 1));
@@ -274,7 +307,17 @@ bool install_asset(const char *slug, const char *assetName,
 
     Entry &e = s_index[s_insCount];
     memset(&e, 0, sizeof(e));
-    strncpy(e.slug, slug,      sizeof(e.slug) - 1);
+    e.slugHash = slug_hash(slug);                            // the whole slug, not 19 bytes of it
+    strncpy(e.slugPrefix, slug, sizeof(e.slugPrefix) - 1);   // logs only
+    // The same truncate-then-compare trap the slug fell into, one field over: name is
+    // compared over all 24 bytes but stored with at most 23 plus a NUL, so a 24-character
+    // asset name would be equally unfindable. Every name the firmware asks for today is
+    // 23 or shorter (clock_shadow_minute.png), so say so loudly rather than bake a blob
+    // nothing can address.
+    if (strlen(assetName) >= sizeof(e.name))
+        Serial.printf("[theme_art] asset name '%s' is too long for the index (max %u) — "
+                      "it will bake and then never be found\n",
+                      assetName, (unsigned)(sizeof(e.name) - 1));
     strncpy(e.name, assetName, sizeof(e.name) - 1);
     e.offset = offset;
     e.len    = (uint32_t)len;
