@@ -10,7 +10,16 @@
 #include <string.h>
 #include <time.h>   // route-cache TTL
 
-#define ROUTE_CACHE_MAX 200   // wrap the cache before it can crowd NVS
+// The cache must never fill NVS, because NVS is where every setting lives. At 200 it did:
+// each route is two entries, and with the remembered WiFi networks, the satellites' orbital
+// elements and the rest, the partition ran out (2026-10-11: 280 keys in "routes", 126 free
+// entries, which is only the page NVS keeps back for itself). Once full, the counter below
+// could not be written either, so the cache never wrapped and stayed full for good, and every
+// setting saved after that was silently lost at the next restart, the WiFi calibration too.
+// So: fewer routes, a floor of free entries that the cache never eats into, and a failed
+// write starts the cache over instead of leaving NVS full.
+#define ROUTE_CACHE_MAX 80
+#define NVS_KEEP_FREE   (126 + 100)   // NVS's own reserved page, plus room for settings
 
 // strip spaces -> a valid NVS key (callsigns are <= 8 chars)
 static void route_key(const char *callsign, char *out, size_t on) {
@@ -25,7 +34,11 @@ static void route_key(const char *callsign, char *out, size_t on) {
 void route_cache_begin() {
     Preferences p;
     if (!p.begin("routes", false)) return;
-    if (p.getUChar("__v", 0) != ROUTE_FMT_VER) { p.clear(); p.putUChar("__v", ROUTE_FMT_VER); }
+    if (p.getUChar("__v", 0) != ROUTE_FMT_VER || p.getInt("__n", 0) > ROUTE_CACHE_MAX ||
+        p.freeEntries() < NVS_KEEP_FREE) {
+        Serial.printf("[route] cache cleared (%u NVS entries free)\n", (unsigned)p.freeEntries());
+        p.clear(); p.putUChar("__v", ROUTE_FMT_VER);
+    }
     p.end();
 }
 
@@ -62,9 +75,16 @@ void route_cache_put(const char *callsign, const char *from, const char *to) {
     Preferences p;
     if (!p.begin("routes", false)) return;
     int n = p.getInt("__n", 0);
-    if (n >= ROUTE_CACHE_MAX) { p.clear(); n = 0; }   // wrap to bound NVS usage
+    if (n >= ROUTE_CACHE_MAX || p.freeEntries() < NVS_KEEP_FREE) {   // wrap to bound NVS usage
+        p.clear(); p.putUChar("__v", ROUTE_FMT_VER); n = 0;
+    }
     String v = String((uint32_t)time(nullptr)) + "|" + String(from ? from : "") + "|" + String(to ? to : "");
-    if (p.putString(key, v) > 0) p.putInt("__n", n + 1);
+    size_t wrote = p.putString(key, v);
+    if (!wrote) {                                       // NVS full after all: start over, never stay full
+        p.clear(); p.putUChar("__v", ROUTE_FMT_VER); n = 0;
+        wrote = p.putString(key, v);
+    }
+    if (wrote) p.putInt("__n", n + 1);
     p.end();
 }
 
