@@ -33,7 +33,11 @@ namespace {
         bool          hidden;    // registered but skipped when cycling the menu
     };
 
-    constexpr int   MAX_APPS      = 8;
+    // Sized from the slot table, never by hand. It was a bare 8, and the ninth app (MeshCore,
+    // 2.33.0) pushed Settings, always registered last, out of the table without a word: the
+    // menu simply had no Settings any more. Two spare slots for screens registered outside
+    // the enum, and add() now says so loudly when one does not fit.
+    constexpr int   MAX_APPS      = app_shell::APP_COUNT + 2;
     constexpr uint32_t ANIM_MS    = 250;   // slide duration between apps
 
     App  s_apps[MAX_APPS];
@@ -301,6 +305,8 @@ void app_shell::add(lv_obj_t *screen, const char *name,
         s_apps[s_count].onExit  = onExit;
         s_apps[s_count].hidden  = hidden;
         s_count++;
+    } else if (screen) {
+        Serial.printf("[shell] NO ROOM FOR APP \"%s\": the table holds %d (MAX_APPS)\n", name ? name : "?", MAX_APPS);
     }
 }
 
