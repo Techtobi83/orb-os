@@ -42,8 +42,9 @@ taken or left on its own.
 **New and returning apps**
 - **Livestream**: a network camera full screen (MJPEG stream or JPEG snapshot URL), the URL set on the Orb itself; Settings → Livestream → Show app takes it out of the menu without forgetting the URL.
 - **Forecast** ("Vorhersage"): the weather forecast as a 24-hour dial.
-- **Earth** ("Erde"): the globe from space over your home, NASA day and night imagery, the real sun with a soft twilight band and city lights. Turn the knob to spin it; it glides home after 5 s. Needs `day.jpg` and `night.jpg` from the release in `/earth/` on the SD card.
+- **Earth** ("Erde"): the globe from space over your home, NASA day and night imagery, the real sun with a soft twilight band and city lights. Turn the knob to spin it; it glides home after 5 s. The current time sits small in the lower fifth, and your home is marked with a dot and its name. Needs `day.jpg` and `night.jpg` from the release in `/earth/` on the SD card.
 - **Satellites** ("Satelliten"): the ISS, Tiangong, Hubble and the James Webb telescope over the same NASA globe, which follows the satellite with it in a reticle at the centre. Its next 90 minutes are drawn ahead in amber, the last 40 dashed behind, with the circle of ground that can see it now and your home by name. Below: height and speed, and the next pass over home with the time, how high it climbs, from where to where, and whether you can see it (lit by the sun while your sky is dark). Turn the knob to step through the four. Orbits come from [CelesTrak](https://celestrak.org) once a day and are computed on the Orb (SGP4); Webb circles the L2 point 1.5 million km out, so it comes from a JPL Horizons table built into the firmware instead and shows its distance, light time and when it rises. Settings → Satellites → Show app hides it and stops the download. Uses the Earth app's pictures. The idea came from the Orb Discord, found by **@DigiDigs**.
+- **MeshCore**: your MeshCore repeater at the centre and its neighbour repeaters around it by bearing and distance, over the weather map's roads (40 km to the rim). Two-way links are solid and one-way links dashed, thicker with more traffic, and light runs along each link as often as each side hears the other. Below: packets relayed in the last 24 hours and the last hour, best SNR and when it was last heard. Turn the knob to step from neighbour to neighbour and see that link's distance, direction and how often each side hears the other; after 6 s the overview returns. The figures come from the [MeshCore analyzer](https://analyzer.meshcorenetz.de), whose observer stations hear repeaters on their own, so yours needs no registration. Choose the node at `http://theorb.local/meshcore` (pasting the analyzer's link to it works too). Settings → MeshCore → Show app hides it and stops the requests, which run every 15 minutes and only while the page is open.
 - **Weather radar** is back in the build: rain only (no weak echoes), the full round display, 40 km, one frame every five minutes, with the town's name.
 - **News** is compiled out of this build (`NEWS_ENABLED 0`).
 
@@ -82,6 +83,11 @@ taken or left on its own.
 - Stock app names follow the language unless the theme names its apps.
 
 **The Tagesring theme** ([`themes/techtobi/`](themes/techtobi/), drawn by [`tools/theme_techtobi.py`](tools/theme_techtobi.py)): a chronometer dial with the day ring and a swinging balance wheel, an Iron Orbit start screen, amber menus and an amber flight tracker, and the same full-size frame on the weather map and the Livestream.
+
+**Fixes found on the way**
+- **Settings no longer get lost.** The flight tracker's route cache could fill the settings store completely, after which every setting changed was silently gone at the next restart, the WiFi calibration included. It now keeps at most 80 routes and never fills the store.
+- **HTTPS works.** Every `https://` request used to fail on this board for lack of internal memory, the flight photos and route lookups included. TLS now uses PSRAM, and the network task has the extra stack a handshake needs.
+- With nine apps, Settings dropped out of the app menu; the app table now grows with the apps.
 
 **Taken from Zion's repo** (each with its author kept and a note of the original commit):
 - Older and smaller SD cards (2 GB and under) are run slower instead of being reported as no card.
@@ -212,6 +218,7 @@ src/
   intel_view.*        the news screen  (named intel for historical reasons)
   livecam_view.*      the Livestream app (network camera)
   sat_view.*          the Satellites app (SGP4 worker, NASA globe); jwst_ephem.h is its Webb table
+  mesh_view.*         the MeshCore app (repeater, neighbours, analyzer JSON)
   settings_view.*     the settings wheel
   spycam_view.*       surveillance (out of launch one)
   theme_style.*       the theme model and THEME_CAPS
