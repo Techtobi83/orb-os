@@ -28,7 +28,8 @@ is what the fork adds or changes on top. Each item is its own commit, so any of 
 taken or left on its own.
 
 <p align="center">
-  <img src="docs/img/fork-clock.jpg" width="440" alt="The Orb on its Iron Orbit stand, showing the Tagesring clock: a chronometer dial with an amber 24-hour day ring, sunrise and sunset times, a balance wheel window and a weekday date window">
+  <img src="docs/img/fork-satellites.jpg" width="400" alt="The Satellites app in German: James Webb over the night side of the globe with an amber graticule and the reticle at the centre, a thin blue atmosphere, the home town Balve marked, and below it 1.40 million km, light 4.7 s, above the horizon at 12 degrees west">
+  <img src="docs/img/fork-clock.jpg" width="400" alt="The Orb on its Iron Orbit stand, showing the Tagesring clock: a chronometer dial with an amber 24-hour day ring, sunrise and sunset times, a balance wheel window and a weekday date window">
 </p>
 
 <p align="center">
