@@ -133,6 +133,42 @@ uint8_t   s_edgeAt = 0;      // which one to try first next time
 // again in ten seconds only spends the poll. So a failure to connect parks that address for
 // a while, and the pool spends its two tries on doors that might open.
 uint32_t  s_edgeNextOkMs[ADSB_EDGE_POOL] = { 0 };
+// How many times in a row this address has refused to open a socket, and the point at which
+// the pool stops believing in it.
+//
+// NOTHING USED TO LEAVE THIS POOL. It only grew, and the cooldowns rotated between whatever
+// was in it, so an address that went permanently bad was tried, rested forty-five seconds,
+// and tried again, for as long as the Orb stayed switched on. A reboot was the only thing
+// that cleared it, which is exactly what people reported: rubenscamp_43060, 2026-10-05,
+// "when the error occurs the only way I have found to get it back is to reset the unit".
+//
+// The 0.0.0.0 guard above stops one way of getting a dead address in. This stops it mattering
+// which way it got in. Six consecutive refusals is comfortably past flapping: the service's
+// own addresses come back inside a minute, and six failures spread across the cooldown is
+// four and a half minutes of an address doing nothing at all.
+//
+// Dropping it is not forgetting it forever. learn_edge() runs on its own schedule and will
+// put it back if DNS still hands it out AND it works, which is the right way round.
+uint8_t   s_edgeFails[ADSB_EDGE_POOL] = { 0 };
+constexpr uint8_t EDGE_DROP_AFTER = 6;
+
+void drop_edge(uint8_t i) {
+    if (i >= s_edgeN) return;
+    Serial.printf("[adsb] %s has refused %u times running; dropping it from the pool\n",
+                  s_edge[i].toString().c_str(), (unsigned)s_edgeFails[i]);
+    for (uint8_t j = (uint8_t)(i + 1); j < s_edgeN; ++j) {
+        s_edge[j - 1]        = s_edge[j];
+        s_edgeNextOkMs[j - 1] = s_edgeNextOkMs[j];
+        s_edgeFails[j - 1]    = s_edgeFails[j];
+    }
+    --s_edgeN;
+    s_edgeNextOkMs[s_edgeN] = 0;
+    s_edgeFails[s_edgeN]    = 0;
+    // The cursor indexes a list that just got shorter, so bring it back inside it rather
+    // than leaving it to wrap onto whichever address happens to be at that position now.
+    if (s_edgeN == 0) s_edgeAt = 0;
+    else if (s_edgeAt >= s_edgeN) s_edgeAt = (uint8_t)(s_edgeAt % s_edgeN);
+}
 // Forty-five seconds, not five minutes. The first version of this rested a failed address
 // for five minutes, which is right for an address that is DEAD and wrong for this service,
 // which flaps: the same address that refuses now answers in 355 ms a minute later. Resting
@@ -260,23 +296,30 @@ bool AdsbClient::poll(std::vector<Aircraft>& out) {
         if (fetchFrom(s_edge[idx], out)) {
             s_edgeAt = idx;                                    // stay on what works
             s_edgeNextOkMs[idx] = 0;                           // and forgive it entirely
+            s_edgeFails[idx]    = 0;                           // including its history
             return true;
         }
         // Only a transport failure parks an address. A 429 means the server is there and
         // busy, which is exactly the case the rotation was built for and must stay in it.
         if (_lastStatus <= 0) {
             s_edgeNextOkMs[idx] = millis() + EDGE_COOLDOWN_MS;
-            Serial.printf("[adsb] %s did not answer; resting it for %lu s\n",
-                          s_edge[idx].toString().c_str(), (unsigned long)(EDGE_COOLDOWN_MS / 1000UL));
+            if (s_edgeFails[idx] < 255) ++s_edgeFails[idx];
+            Serial.printf("[adsb] %s did not answer (%u in a row); resting it for %lu s\n",
+                          s_edge[idx].toString().c_str(), (unsigned)s_edgeFails[idx],
+                          (unsigned long)(EDGE_COOLDOWN_MS / 1000UL));
+            // Never the last one. An empty pool cannot be polled at all, and learn_edge only
+            // refills it when DNS answers, so emptying it on a WiFi outage would take the
+            // feed down until the next lookup rather than until the next good connect.
+            if (s_edgeFails[idx] >= EDGE_DROP_AFTER && s_edgeN > 1) { drop_edge(idx); break; }
         }
     }
     // Every door is on cooldown: forget the cooldowns rather than sit out the outage. Being
     // wrong about one address is recoverable; refusing to try any of them is not.
-    if (used == 0) {
+    if (used == 0 && s_edgeN > 0) {
         for (uint8_t i = 0; i < s_edgeN; ++i) s_edgeNextOkMs[i] = 0;
         Serial.println("[adsb] every edge was resting; trying them all again");
     }
-    s_edgeAt = (uint8_t)((s_edgeAt + 1) % s_edgeN);            // rotate for next time
+    if (s_edgeN) s_edgeAt = (uint8_t)((s_edgeAt + 1) % s_edgeN);   // rotate for next time
     Serial.printf("[adsb] poll gave up after %u edge(s); sockets opened=%lu reused=%lu\n",
                   (unsigned)used, (unsigned long)_openCount, (unsigned long)_reuseCount);
     return false;
