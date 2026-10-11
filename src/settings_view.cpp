@@ -80,6 +80,9 @@ extern void host_livestream_url_get(char *out, size_t n);
 extern void host_livestream_url_set(const char *url);
 extern bool host_livestream_shown();
 extern void host_livestream_set_shown(bool on);
+// Settings > Satellites > Show app (main.cpp; NVS "satShow").
+extern bool host_sats_shown();
+extern void host_sats_set_shown(bool on);
 
 namespace {
     // MODE_LOCATION is a 4-item menu (current / search / recent / back); MODE_RECENT is
@@ -87,7 +90,7 @@ namespace {
     enum Mode { MODE_MENU, MODE_DISPLAY, MODE_BRIGHT, MODE_LOCATION, MODE_RECENT, MODE_SEARCH, MODE_SOUND, MODE_VOLUME, MODE_ABOUT,
                 MODE_WIFI_LIST, MODE_WIFI_PASSWORD, MODE_WIFI_STATUS, MODE_RESET_CONFIRM, MODE_UNITS, MODE_CHIME_SELECT,
                 MODE_THEME_SELECT, MODE_THEME_NOTICE, MODE_DESIGN_SELECT, MODE_DESIGN_NOTICE, MODE_RANGE,
-                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL, MODE_LANGUAGE, MODE_STREAM };
+                MODE_FIRSTBOOT, MODE_FIRSTBOOT_PHONE, MODE_NO_SDCARD, MODE_STREAM_URL, MODE_LANGUAGE, MODE_STREAM, MODE_SATS };
 
     // --- main settings menu ---
     // ITEM_RANGE was added when touch (and with it the on-screen zoom button) was
@@ -95,15 +98,16 @@ namespace {
     // "default selection", so an older theme may now open Settings on a neighbouring
     // item. Cosmetic only, and DEFAULT_SEL below still clamps anything out of range.
     // ITEM_STREAM (the Livestream app's camera URL) was inserted after Range the same way,
-    // and ITEM_LANGUAGE after Theme.
-    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_STREAM, ITEM_WIFI, ITEM_DESIGN, ITEM_LANGUAGE, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
-    const char *ITEM_LABELS[ITEM_COUNT]    = { "Display", "Location", "Sound", "Units", "Range", "Livestream", "WiFi", "Theme", "Language", "About", "Reset", "Back" };
-    const char *ITEM_LABELS_DE[ITEM_COUNT] = { "Anzeige", "Standort", "Ton", "Einheiten", "Reichweite", "Livestream", "WLAN", "Design", "Sprache", "Info", "Zurücksetzen", "Zurück" };
+    // and ITEM_LANGUAGE after Theme, and ITEM_SATS (the Satellites app's switch) after Livestream.
+    enum { ITEM_DISPLAY = 0, ITEM_LOCATION, ITEM_SOUND, ITEM_UNITS, ITEM_RANGE, ITEM_STREAM, ITEM_SATS, ITEM_WIFI, ITEM_DESIGN, ITEM_LANGUAGE, ITEM_ABOUT, ITEM_RESET, ITEM_BACK, ITEM_COUNT };
+    const char *ITEM_LABELS[ITEM_COUNT]    = { "Display", "Location", "Sound", "Units", "Range", "Livestream", "Satellites", "WiFi", "Theme", "Language", "About", "Reset", "Back" };
+    const char *ITEM_LABELS_DE[ITEM_COUNT] = { "Anzeige", "Standort", "Ton", "Einheiten", "Reichweite", "Livestream", "Satelliten", "WLAN", "Design", "Sprache", "Info", "Zurücksetzen", "Zurück" };
     // Settings > Language: each language named in itself, so whoever cannot read the current
     // one can still find their own.
     enum { LNG_EN = 0, LNG_DE, LNG_BACK, LNG_COUNT };
     // Settings > Livestream: the URL, whether the app shows in the menu, Back.
     enum { STR_URL = 0, STR_SHOW, STR_BACK, STR_COUNT };
+    enum { SAT_SHOW = 0, SAT_BACK, SAT_COUNT };      // Settings > Satellites
     // A Launch Kit push's "Default selection" (was editor-preview-only; now baked
     // in) — which item the main menu opens on, both at first boot and every time
     // the app switcher hands control back to Settings. Out-of-range (a stale
@@ -398,6 +402,10 @@ namespace {
     lv_obj_t *s_strHl     = nullptr;
     lv_obj_t *s_strItems[STR_COUNT] = { nullptr };
     int       s_strSel    = 0;
+    lv_obj_t *s_satPage   = nullptr;         // Settings > Satellites
+    lv_obj_t *s_satHl     = nullptr;
+    lv_obj_t *s_satItems[SAT_COUNT] = { nullptr };
+    int       s_satSel    = 0;
     lv_obj_t *s_langPage  = nullptr;         // Settings > Language
     lv_obj_t *s_langHl    = nullptr;
     lv_obj_t *s_langItems[LNG_COUNT] = { nullptr };
@@ -855,6 +863,15 @@ namespace {
         wheel_layout(s_strItems, STR_COUNT, s_strSel, s_strHl);
     }
 
+    void refresh_sats_menu() {
+        char b[40];
+        snprintf(b, sizeof(b), tr("Show app   %s", "App anzeigen   %s"),
+                 host_sats_shown() ? tr("ON", "AN") : tr("OFF", "AUS"));
+        lv_label_set_text(s_satItems[SAT_SHOW], b);
+        lv_label_set_text(s_satItems[SAT_BACK], tr("Back", "Zurück"));
+        wheel_layout(s_satItems, SAT_COUNT, s_satSel, s_satHl);
+    }
+
     void refresh_language() {
         lv_label_set_text(s_langItems[LNG_EN], "English");
         lv_label_set_text(s_langItems[LNG_DE], "Deutsch");
@@ -1082,6 +1099,7 @@ namespace {
         lv_obj_add_flag(s_themeNoticePage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_langPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_strPage, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_satPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designPage, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_designNoticePage, LV_OBJ_FLAG_HIDDEN);
         if (m == MODE_MENU)          { lv_obj_clear_flag(s_menu, LV_OBJ_FLAG_HIDDEN);    refresh_menu(); }
@@ -1094,6 +1112,7 @@ namespace {
         else if (m == MODE_UNITS)    { lv_obj_clear_flag(s_unitsPage, LV_OBJ_FLAG_HIDDEN); refresh_units(); }
         else if (m == MODE_LANGUAGE) { lv_obj_clear_flag(s_langPage, LV_OBJ_FLAG_HIDDEN); refresh_language(); }
         else if (m == MODE_STREAM)   { lv_obj_clear_flag(s_strPage, LV_OBJ_FLAG_HIDDEN); refresh_stream_menu(); }
+        else if (m == MODE_SATS)     { lv_obj_clear_flag(s_satPage, LV_OBJ_FLAG_HIDDEN); refresh_sats_menu(); }
         else if (m == MODE_RANGE)    { lv_obj_clear_flag(s_rangePage, LV_OBJ_FLAG_HIDDEN); refresh_range(); }
         else if (m == MODE_VOLUME)   { lv_obj_clear_flag(s_volPage, LV_OBJ_FLAG_HIDDEN); refresh_vol(); }
         else if (m == MODE_ABOUT)    { lv_obj_clear_flag(s_aboutPage, LV_OBJ_FLAG_HIDDEN); refresh_about(); }
@@ -1424,6 +1443,11 @@ void settingsview::onTurn(int delta) {
         if (s_strSel < 0) s_strSel = 0;
         if (s_strSel >= STR_COUNT) s_strSel = STR_COUNT - 1;
         refresh_stream_menu();
+    } else if (s_mode == MODE_SATS) {
+        s_satSel += step;
+        if (s_satSel < 0) s_satSel = 0;
+        if (s_satSel >= SAT_COUNT) s_satSel = SAT_COUNT - 1;
+        refresh_sats_menu();
     } else if (s_mode == MODE_LANGUAGE) {
         s_langSel += step;
         if (s_langSel < 0) s_langSel = 0;
@@ -1572,6 +1596,7 @@ void settingsview::onPress() {
         else if (s_sel == ITEM_LANGUAGE) { s_langSel = lang::get(); show_page(MODE_LANGUAGE); }
         else if (s_sel == ITEM_RANGE) { s_rangeSel = 0; show_page(MODE_RANGE); }
         else if (s_sel == ITEM_STREAM) { s_strSel = 0; show_page(MODE_STREAM); }
+        else if (s_sel == ITEM_SATS) { s_satSel = 0; show_page(MODE_SATS); }
         else if (s_sel == ITEM_WIFI) { diag::log("wifi: enter (open list)"); start_wifi_scan(); show_page(MODE_WIFI_LIST); }
         else if (s_sel == ITEM_DESIGN) { s_designSel = 0; show_page(MODE_DESIGN_SELECT); }
         else if (s_sel == ITEM_ABOUT) { show_page(MODE_ABOUT); }
@@ -1667,6 +1692,14 @@ void settingsview::onPress() {
         } else if (s_strSel == STR_SHOW) {
             host_livestream_set_shown(!host_livestream_shown());
             refresh_stream_menu();
+        } else {                                        // Back -> exit Settings to the app switcher
+            app_shell::setCaptured(false);
+            app_shell::openSwitcher();
+        }
+    } else if (s_mode == MODE_SATS) {
+        if (s_satSel == SAT_SHOW) {
+            host_sats_set_shown(!host_sats_shown());
+            refresh_sats_menu();
         } else {                                        // Back -> exit Settings to the app switcher
             app_shell::setCaptured(false);
             app_shell::openSwitcher();
@@ -2320,6 +2353,24 @@ void settingsview::init() {
     for (int i = 0; i < STR_COUNT; ++i) {
         s_strItems[i] = lv_label_create(s_strPage);
         lv_label_set_text(s_strItems[i], "");
+    }
+
+    // --- Satellites page (Show app / Back) ---
+    s_satPage = lv_obj_create(s_screen);
+    lv_obj_remove_style_all(s_satPage);
+    lv_obj_set_size(s_satPage, SCREEN_W, SCREEN_H); lv_obj_center(s_satPage);
+    lv_obj_clear_flag(s_satPage, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *sattitle = lv_label_create(s_satPage);
+    lv_label_set_text(sattitle, tr("Satellites", "Satelliten"));
+    lv_obj_set_style_text_color(sattitle, C_DIM, 0);
+    lv_obj_set_style_text_font(sattitle, &font_de_16, 0);
+    lv_obj_align(sattitle, LV_ALIGN_CENTER, 0, -122);
+    reg_hint(sattitle);
+    s_satHl = lv_obj_create(s_satPage);
+    style_highlight(s_satHl);
+    for (int i = 0; i < SAT_COUNT; ++i) {
+        s_satItems[i] = lv_label_create(s_satPage);
+        lv_label_set_text(s_satItems[i], "");
     }
 
     // --- language page (English / Deutsch / Back) ---

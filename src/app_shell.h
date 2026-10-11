@@ -59,6 +59,9 @@ namespace app_shell {
 #if GLOBE_ENABLED
         APP_GLOBE,       // "Erde" (config.h, globe_view.cpp)
 #endif
+#if SAT_ENABLED
+        APP_SATS,        // "Satelliten" (config.h, sat_view.cpp)
+#endif
 #if !APPS_LAUNCH_ONE
         APP_SURVEILLANCE,
 #endif

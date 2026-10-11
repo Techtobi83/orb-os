@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.31.11"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.32.0"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -67,6 +67,17 @@
 #define GLOBE_ENABLED    1
 #define GLOBE_NAME       tr("Earth", "Erde")
 #define GLOBE_RADIUS_PX  222    // to the glass: 222 + the 9 px atmosphere = 231 of 233
+
+// "Satellites": the ISS, Tiangong, Hubble and James Webb over the same NASA pictures, the
+// globe following the satellite (sat_view.cpp). Turning steps through them. Shown or hidden
+// in Settings > Satellites. The three in Earth orbit come as two-line elements from CelesTrak,
+// over plain HTTP, at most once a day; Webb is not in Earth orbit and comes from a table
+// built into the firmware (src/jwst_ephem.h, tools/gen_jwst_table.py).
+#define SAT_ENABLED      1
+#define SAT_NAME         tr("Satellites", "Satelliten")
+#define SAT_TLE_URL      "http://celestrak.org/NORAD/elements/gp.php?FORMAT=tle&CATNR="
+#define SAT_TLE_MAX_AGE_S  (24 * 3600)    // fetch fresh elements once a day
+#define SAT_TLE_RETRY_MS   (5 * 60000UL)  // after a failed fetch
 
 // ---------- Touch: swipe sideways to change app ----------
 // The Orb is knob-first (docs/ARCHITECTURE.md), and the knob still does everything. This adds

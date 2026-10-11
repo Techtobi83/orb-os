@@ -51,6 +51,7 @@
 #include "input_router.h"            // shared knob->app_shell routing (device + sim)
 #include "touch_swipe.h"             // sideways swipe on the glass (TOUCH_SWIPE_ENABLED)
 #include "forecast_view.h"           // "Vorhersage", the forecast dial (FORECAST_ENABLED)
+#include "sat_view.h"                // "Satelliten": ISS, Tiangong, Hubble, Webb (SAT_ENABLED)
 #include "globe_view.h"              // "Erde", the globe with the real sun (GLOBE_ENABLED)
 #include "diag_log.h"                // RTC-memory event ring buffer, survives a reboot
 #include "sdcard.h"                  // microSD (TF) slot, SPI mode
@@ -507,6 +508,12 @@ static void adsb_task(void*) {
                     Serial.println("[weather] fetch failed; retrying in 60s");
                 }
             }
+#if SAT_ENABLED
+            // The Satellites app's orbital elements: three small plain-HTTP requests, at most
+            // once a day, and none while the app is hidden. Here because this task owns the
+            // sockets; the app's own worker has a PSRAM stack, which lwIP refuses.
+            if (satview::tleWanted()) satview::fetchTle();
+#endif
             // Weather radar animation: fetch the past frames one per pass (not all 9 in one
             // blocking burst) so each ~2-3s tile fetch yields back to the live ADS-B poll
             // between frames instead of freezing the feed for ~25s. wxFillIdx == FRAMES = idle.
@@ -1001,6 +1008,26 @@ void  host_set_range_km(float km) { onRangeChange(km); }
 static char g_livestreamUrl[LIVECAM_URL_MAX] = "";
 
 void host_livestream_url_get(char *out, size_t n) { snprintf(out, n, "%s", g_livestreamUrl); }
+
+// Settings > Satellites > Show app. Off takes the Satellites app out of the app menu (and the
+// swipe and the Auto page) and stops its once-a-day download of orbital elements.
+static bool g_satsShown = true;
+static bool g_satsShownLoaded = false;
+bool host_sats_shown() {
+    if (!g_satsShownLoaded) {
+        Preferences p; p.begin("capsuleradar", true); g_satsShown = p.getBool("satShow", true); p.end();
+        g_satsShownLoaded = true;
+    }
+    return g_satsShown;
+}
+void host_sats_set_shown(bool on) {
+    g_satsShown = on; g_satsShownLoaded = true;
+    Preferences p; p.begin("capsuleradar", false); p.putBool("satShow", on); p.end();
+#if SAT_ENABLED
+    satview::setShown(on);
+    app_shell::setHidden(app_shell::APP_SATS, !on);
+#endif
+}
 
 // Settings > Livestream > Show app. Off takes the Livestream out of the app menu (and out of
 // the swipe and Auto page) without forgetting its URL, for an Orb with no camera or one
@@ -3412,6 +3439,17 @@ void setup() {
     app_shell::add(globeview::screen(), GLOBE_NAME, nullptr, globeview::onTurn, false,
                    []() { globeview::onEnter(g_settings.homeLat, g_settings.homeLon); },
                    globeview::onExit, false);   // turning spins the globe; it glides home after 5 s
+#endif
+#if SAT_ENABLED
+    satview::init();
+    psram_mark("after satview");
+    app_shell::add(satview::screen(), SAT_NAME, nullptr, satview::onTurn, false,
+                   []() {
+                       char name[40] = "";
+                       host_location_name(name, sizeof(name));
+                       satview::onEnter(g_settings.homeLat, g_settings.homeLon, name);
+                   },
+                   satview::onExit, !host_sats_shown());   // turning steps through the satellites
 #endif
 #if !APPS_LAUNCH_ONE
     spycamview::init();
