@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.33.1"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.33.2"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -87,8 +87,8 @@
 #define MESH_ENABLED      1
 #define MESH_NAME         "MeshCore"
 #define MESH_API_BASE     "https://analyzer.meshcorenetz.de/api/nodes/"
-#define MESH_REFRESH_MS   (15 * 60000UL)
-#define MESH_RETRY_MS     (2 * 60000UL)  // after a failed fetch
+#define MESH_REFRESH_MS   (5 * 60000UL)    // the analyzer's own cache is 30 s
+#define MESH_RETRY_MS     (60000UL)        // after a failed fetch
 #define MESH_RANGE_KM     40             // map radius at the rim
 #define MESH_IDLE_MS      6000           // a chosen neighbour falls back to the overview after this
 

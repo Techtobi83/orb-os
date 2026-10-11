@@ -313,12 +313,14 @@ void set_texts(uint32_t now) {
         snprintf(a, sizeof(a), tr("%s relayed · 24 h", "%s weitergeleitet · 24 h"), t1);
         thousands(t2, sizeof(t2), v.relay1h);
         snprintf(b, sizeof(b), tr("%s IN THE LAST HOUR", "%s IN DER LETZTEN STUNDE"), t2);
-        snprintf(c, sizeof(c), tr("best SNR %d dB", "bestes SNR %d dB"), v.bestSnr);
+        // The best SNR line went at the owner's request; "last heard" takes its place a size up.
         if (v.lastSeen) {
             time_t ls = v.lastSeen; struct tm tm; localtime_r(&ls, &tm);
-            snprintf(d, sizeof(d), tr("last heard %02d:%02d", "zuletzt gemeldet %02d:%02d"), tm.tm_hour, tm.tm_min);
+            snprintf(c, sizeof(c), tr("last heard %02d:%02d", "zuletzt gemeldet %02d:%02d"), tm.tm_hour, tm.tm_min);
         }
     }
+    const bool overview = s_id[0] && v.ok && s_sel < 0;
+    lv_obj_set_style_text_font(s_l3, overview ? &font_sat_18 : &font_sat_14, 0);
     lv_label_set_text(s_l1, a); lv_label_set_text(s_l2, b); lv_label_set_text(s_l3, c); lv_label_set_text(s_l4, d);
     if (v.ok) {
         char up[40]; snprintf(up, sizeof(up), "%s", v.name);
