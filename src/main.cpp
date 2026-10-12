@@ -40,6 +40,8 @@
 #include "theme_audio.h"   // sounds a theme brings with it: wind.pcm, chime.pcm
 #include "chime_library.h" // every chime on the device, from flash and from every theme
 #include "display.h"                  // M0: CO5300 + LVGL bring-up
+#include "lv_psram_alloc.h"            // OrbLvPsramScope, for building Settings in PSRAM
+extern "C" { volatile int orb_lv_psram_scope = 0; }   // declared in lv_psram_alloc.h
 #include "imu_qmi8658.h"             // face-down sleep
 #include "battery.h"                 // AXP2101 battery gauge
 #include "rtc_pcf85063.h"            // PCF85063 RTC (offline clock + date)
@@ -3578,7 +3580,10 @@ void setup() {
     app_shell::add(livecamview::screen(), LIVECAM_NAME, nullptr, nullptr, false,
                    livecamview::onEnter, livecamview::onExit, !g_livestreamShown);  // onEnter opens the stream, onExit closes it
 #endif
-    settingsview::init();
+    {
+        OrbLvPsramScope psram;   // 48 KB of internal RAM otherwise, for a page rarely open (lv_psram_alloc.h)
+        settingsview::init();
+    }
     psram_mark("after settingsview");
     app_shell::add(settingsview::screen(), theme_style::names().settings,
                    settingsview::onPress, settingsview::onTurn,

@@ -60,8 +60,23 @@
 #ifndef ORB_LV_BIG_ALLOC
 #define ORB_LV_BIG_ALLOC (2 * 1024)
 #endif
+
+// A screen nobody looks at most of the day can still own a large share of internal RAM.
+// Settings built 1,050 small objects at boot, 48 KB of it (2026-10-12), more than five times
+// what was left free with the MeshCore page open, where HTTPS handshakes then failed. While
+// this counter is above zero every LVGL allocation goes to PSRAM whatever its size. Hold it
+// with OrbLvPsramScope (below) around building a screen whose drawing speed does not matter;
+// the per-draw scratch buffers are allocated later, outside the scope, and stay internal.
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern volatile int orb_lv_psram_scope;
+#ifdef __cplusplus
+}
+#endif
+
 static inline void *orb_lv_malloc(size_t size) {
-    if (size >= ORB_LV_BIG_ALLOC) {
+    if (size >= ORB_LV_BIG_ALLOC || orb_lv_psram_scope > 0) {
         void *p = heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         return p ? p : heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
@@ -71,7 +86,7 @@ static inline void *orb_lv_malloc(size_t size) {
 static inline void *orb_lv_realloc(void *p, size_t size) {
     // heap_caps_realloc honours the requested caps and copies across regions when the
     // block has to move, so a small buffer growing past the threshold migrates to PSRAM.
-    if (size >= ORB_LV_BIG_ALLOC) {
+    if (size >= ORB_LV_BIG_ALLOC || orb_lv_psram_scope > 0) {
         void *q = heap_caps_realloc(p, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         return q ? q : heap_caps_realloc(p, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     }
@@ -79,6 +94,14 @@ static inline void *orb_lv_realloc(void *p, size_t size) {
     return q ? q : heap_caps_realloc(p, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }
 static inline void orb_lv_free(void *p) { heap_caps_free(p); }
+
+#ifdef __cplusplus
+// Holds the PSRAM scope for its lifetime (LVGL thread only).
+struct OrbLvPsramScope {
+    OrbLvPsramScope()  { orb_lv_psram_scope = orb_lv_psram_scope + 1; }
+    ~OrbLvPsramScope() { orb_lv_psram_scope = orb_lv_psram_scope - 1; }
+};
+#endif
 
 #else   // desktop simulator: plain libc, no PSRAM to speak of
 static inline void *orb_lv_malloc(size_t size) { return malloc(size); }
