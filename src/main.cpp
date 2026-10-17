@@ -519,7 +519,7 @@ static void adsb_task(void*) {
             if (satview::tleWanted()) satview::fetchTle();
 #endif
 #if MESH_ENABLED
-            // The MeshCore page's figures: two HTTPS requests, every 5 minutes, only while it is open.
+            // The MeshCore page's figures: two HTTPS requests, every 4 hours, only while it is open.
             if (meshview::fetchWanted()) meshview::fetch();
 #endif
             // Weather radar animation: fetch the past frames one per pass (not all 9 in one
