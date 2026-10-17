@@ -16,6 +16,7 @@ LV_FONT_DECLARE(font_sora_15);
 
 extern bool host_location_name(char *out, size_t n);   // main.cpp / sim_main.cpp
 extern bool host_wifi_connected();                     // main.cpp / sim_main.cpp
+extern bool host_wx_is_imperial();                     // Settings > Units, Auto resolved by home location
 
 namespace forecastview {
 namespace {
@@ -181,6 +182,10 @@ void draw_capsule_icon(int code) {
     }
 }
 
+// Degrees in the units Settings asks for. This page showed Celsius whatever the setting said,
+// until an owner with Imperial units asked where Fahrenheit was (2026-10-17).
+long deg(float c) { return lroundf(host_wx_is_imperial() ? c * 1.8f + 32.0f : c); }
+
 void refresh() {
     WeatherSnapshot w;
     const bool have = weather_get(w) && w.valid;
@@ -210,7 +215,7 @@ void refresh() {
 
     draw_symbol(look_for(w.code), day);
     char b[64];
-    snprintf(b, sizeof(b), "%ld°", lroundf(w.tempC));
+    snprintf(b, sizeof(b), "%ld°", deg(w.tempC));
     lv_label_set_text(s_temp, b);
     const bool stale = s_gotAt && lv_tick_elaps(s_gotAt) > STALE_MS;
     lv_obj_set_style_text_color(s_temp, lv_color_hex(stale ? COL_DIM : COL_TEXT), 0);
@@ -218,11 +223,11 @@ void refresh() {
     // the condition alone, rather than a second line running into the capsule. Measured on
     // the plain text: the recolour marks draw nothing.
     const char *cond = condition_de(w.code, day);
-    snprintf(b, sizeof(b), tr("%s · feels %ld°", "%s · gefühlt %ld°"), cond, lroundf(w.feelsC));
+    snprintf(b, sizeof(b), tr("%s · feels %ld°", "%s · gefühlt %ld°"), cond, deg(w.feelsC));
     lv_point_t sz;
     lv_txt_get_size(&sz, b, &font_sora_21, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
     if (sz.x <= COND_MAX_W)
-        snprintf(b, sizeof(b), tr("%s #8F8B83 ·# feels %ld°", "%s #8F8B83 ·# gefühlt %ld°"), cond, lroundf(w.feelsC));
+        snprintf(b, sizeof(b), tr("%s #8F8B83 ·# feels %ld°", "%s #8F8B83 ·# gefühlt %ld°"), cond, deg(w.feelsC));
     else
         snprintf(b, sizeof(b), "%s", cond);
     lv_label_set_text(s_cond, b);
@@ -231,7 +236,7 @@ void refresh() {
         const WeatherDay &t = w.days[1];
         lv_label_set_text(s_capDay, day_abbrev(t.date));
         draw_capsule_icon(t.code);
-        snprintf(b, sizeof(b), "%ld°#8F8B83 /%ld°#", lroundf(t.tempMaxC), lroundf(t.tempMinC));
+        snprintf(b, sizeof(b), "%ld°#8F8B83 /%ld°#", deg(t.tempMaxC), deg(t.tempMinC));
         lv_label_set_text(s_capTemp, b);
         snprintf(b, sizeof(b), "%d %%", t.rainChance);
         lv_label_set_text(s_capRain, b);
