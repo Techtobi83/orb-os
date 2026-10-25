@@ -92,7 +92,7 @@ taken or left on its own.
 
 **Taken from Zion's repo** (each with its author kept and a note of the original commit):
 - Older and smaller SD cards (2 GB and under) are run slower instead of being reported as no card.
-- The flight feed drops an address that keeps refusing, instead of retrying it until a reboot.
+- The flight feed over HTTPS (2.33.7), from adsb.lol with adsb.fi as a fallback: adsb.lol stopped answering plain HTTP in October 2026 and the radar went empty. This replaced the earlier fix that dropped an address which kept refusing.
 - Themes with a long name (20 characters or more) find their baked art again. The first start after updating re-bakes it once.
 - The Orb's web page loads when memory is short, `/legacy` no longer hangs, and the front page no longer links to an update page this build does not have.
 
@@ -120,7 +120,7 @@ Good to know:
 Five screens, reached by rocking the knob to open the app menu and turning to choose:
 
 - **Clock**: analogue hands over the theme's own dial, with optional date and second banners, hand shadows, a plate that can turn with a hand, and a chime on the hour if you turn that on.
-- **Flight tracker**: live traffic from [adsb.lol](https://api.adsb.lol), a sweep, trails, coastlines, roads and airports, with a card for the selected aircraft and up to three readout lines the theme composes itself.
+- **Flight tracker**: live traffic from [adsb.lol](https://api.adsb.lol) (fallback [adsb.fi](https://adsb.fi)), a sweep, trails, coastlines, roads and airports, with a card for the selected aircraft and up to three readout lines the theme composes itself.
 - **News**: headlines from BBC, the Guardian or NASA. Turn to move the highlight, press to read the story's own summary in the same band the list was in.
 - **Livestream**: one network camera full screen, from any plain-HTTP MJPEG stream or JPEG snapshot URL (for example go2rtc's `/api/stream.mjpeg?src=NAME`), zoomed to fill the round display. See [Livestream](#livestream) below.
 - **Settings**: display, location, sound, units, range, livestream URL, WiFi, theme, and About, on a knob-driven wheel.
@@ -246,4 +246,4 @@ Adding or changing a screen? Read [`docs/adding-a-screen.md`](docs/adding-a-scre
 
 The Orb OS began as a fork of [Quique Tortosa's Capsule Radar](https://github.com/socquique/capsule-radar) and carries his copyright alongside Zion Brock's. See [`LICENSE`](LICENSE) for what came from where.
 
-Aircraft data from **adsb.lol**, free and non-commercial. First location from **ip-api.com** and city search from **Open-Meteo**'s geocoding. Map data **© OpenStreetMap contributors**, ODbL, credited on the Orb's own About screen where it cannot be switched off. Headlines from **BBC**, **The Guardian** and **NASA** RSS.
+Aircraft data from **adsb.lol** and **adsb.fi**, free and non-commercial. First location from **ip-api.com** and city search from **Open-Meteo**'s geocoding. Map data **© OpenStreetMap contributors**, ODbL, credited on the Orb's own About screen where it cannot be switched off. Headlines from **BBC**, **The Guardian** and **NASA** RSS.
