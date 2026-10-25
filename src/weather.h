@@ -26,6 +26,7 @@ struct WeatherSnapshot {
     int windDeg;
     WeatherDay days[4];
     int dayCount;
+    char tz[40];        // the home's IANA zone, "Europe/Berlin" (timezone=auto); "" if not sent
 };
 
 void weather_store(const WeatherSnapshot &snapshot);

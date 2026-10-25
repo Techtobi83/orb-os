@@ -82,6 +82,7 @@ bool weather_fetch(double lat, double lon, WeatherSnapshot &out) {
     next.humidity = current["relative_humidity_2m"] | 0;
     next.windKmh = current["wind_speed_10m"] | 0.0f;
     next.windDeg = current["wind_direction_10m"] | 0;
+    snprintf(next.tz, sizeof(next.tz), "%s", doc["timezone"] | "");
 
     JsonArrayConst dates = daily["time"].as<JsonArrayConst>();
     JsonArrayConst codes = daily["weather_code"].as<JsonArrayConst>();

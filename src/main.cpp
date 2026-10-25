@@ -195,6 +195,10 @@ static volatile uint32_t     g_rebootAtMs = 0;
 static String                g_pendingSlug;
 static volatile uint32_t     g_applySlugAtMs = 0;                       // !=0: reboot when millis() reaches it (clean start after WiFi config)
 static String                g_tz = TZ_STR;                          // POSIX timezone (web-configurable, NVS); applied via configTzTime
+// Where g_tz came from, saved beside it as "tzSrc" by tz_store(), the only writer. LEGACY means
+// a zone saved before 2.33.6, which never said. See tz_store() for why this has to be known.
+enum : uint8_t { TZ_SRC_LEGACY = 0, TZ_SRC_LOCATED = 1, TZ_SRC_HOME = 2, TZ_SRC_CHOSEN = 3 };
+static uint8_t               g_tzSrc = TZ_SRC_LEGACY;
 // The name of wherever the Orb is, as the person who set it would say it ("Leeds, Utah").
 // Beside g_tz because it is loaded in the same block and for the same reason: both are what
 // a position MEANS rather than the position itself. Empty until something names it, which is
@@ -242,6 +246,105 @@ static const struct { const char *label; const char *tz; int offMin; int dst; } 
     {"Auckland (NZ)",            "NZST-12NZDT,M9.5.0,M4.1.0/3",      720, 1},
 };
 static const int TZOPTS_N = sizeof(TZOPTS) / sizeof(TZOPTS[0]);
+
+// ---- The clock's summer and winter time -----------------------------------------------------
+//
+// Locating the Orb (IP lookup, Orb Studio) can only store the UTC offset of the moment,
+// "<+02>-2" in a German summer, because neither says which rules apply. That clock then stays
+// an hour off from the last Sunday in October until it is located again; an owner saw it on
+// the morning of the change (2026-10-25). The weather request already names the home's zone
+// ("Europe/Berlin", timezone=auto), so each forecast upgrades such a fixed offset to the
+// zone's real rules. A zone chosen on the web page is never touched: those all carry their
+// rules already, and the bare offsets there (UTC, Arizona, India...) were chosen on purpose.
+//
+// Only zones that change their clocks are listed. Everything else keeps its fixed offset,
+// which for a zone without summer time is simply right.
+static const char *posix_tz_for_iana(const char *z) {
+    if (!z || !*z) return nullptr;
+    static const char *const EU_WET = "WET0WEST,M3.5.0/1,M10.5.0";
+    static const char *const EU_UK  = "GMT0BST,M3.5.0/1,M10.5.0";
+    static const char *const EU_CET = "CET-1CEST,M3.5.0,M10.5.0/3";
+    static const char *const EU_EET = "EET-2EEST,M3.5.0/3,M10.5.0/4";
+    static const char *const US_E = "EST5EDT,M3.2.0,M11.1.0",  *const US_C = "CST6CDT,M3.2.0,M11.1.0";
+    static const char *const US_M = "MST7MDT,M3.2.0,M11.1.0",  *const US_P = "PST8PDT,M3.2.0,M11.1.0";
+    static const char *const US_AK = "AKST9AKDT,M3.2.0,M11.1.0", *const CA_AT = "AST4ADT,M3.2.0,M11.1.0";
+    static const char *const AU_E = "AEST-10AEDT,M10.1.0,M4.1.0/3", *const AU_C = "ACST-9:30ACDT,M10.1.0,M4.1.0/3";
+    static const char *const NZ = "NZST-12NZDT,M9.5.0,M4.1.0/3";
+    static const struct { const char *name; const char *tz; } ZONES[] = {
+        {"Europe/London", EU_UK}, {"Europe/Guernsey", EU_UK}, {"Europe/Jersey", EU_UK},
+        {"Europe/Isle_of_Man", EU_UK}, {"Europe/Dublin", "GMT0IST,M3.5.0/1,M10.5.0"},
+        {"Europe/Lisbon", EU_WET}, {"Atlantic/Canary", EU_WET}, {"Atlantic/Madeira", EU_WET},
+        {"Atlantic/Faroe", EU_WET},
+        {"Europe/Helsinki", EU_EET}, {"Europe/Mariehamn", EU_EET}, {"Europe/Tallinn", EU_EET},
+        {"Europe/Riga", EU_EET}, {"Europe/Vilnius", EU_EET}, {"Europe/Kyiv", EU_EET},
+        {"Europe/Kiev", EU_EET}, {"Europe/Uzhgorod", EU_EET}, {"Europe/Zaporozhye", EU_EET},
+        {"Europe/Bucharest", EU_EET}, {"Europe/Sofia", EU_EET}, {"Europe/Athens", EU_EET},
+        {"Europe/Nicosia", EU_EET}, {"Asia/Nicosia", EU_EET}, {"Asia/Famagusta", EU_EET},
+        {"Europe/Chisinau", "EET-2EEST,M3.5.0,M10.5.0/3"},
+        // No summer time any more: the fixed offset is right, so no rule.
+        {"Europe/Moscow", nullptr}, {"Europe/Minsk", nullptr}, {"Europe/Istanbul", nullptr},
+        {"Europe/Kaliningrad", nullptr}, {"Europe/Samara", nullptr}, {"Europe/Volgograd", nullptr},
+        {"Europe/Saratov", nullptr}, {"Europe/Ulyanovsk", nullptr}, {"Europe/Astrakhan", nullptr},
+        {"Europe/Kirov", nullptr}, {"Europe/Simferopol", nullptr},
+        {"Africa/Ceuta", EU_CET}, {"Arctic/Longyearbyen", EU_CET},
+        {"America/New_York", US_E}, {"America/Detroit", US_E}, {"America/Toronto", US_E},
+        {"America/Nassau", US_E}, {"America/Iqaluit", US_E}, {"America/Grand_Turk", US_E},
+        {"America/Indiana/Knox", US_C}, {"America/Indiana/Tell_City", US_C},
+        {"America/Chicago", US_C}, {"America/Winnipeg", US_C}, {"America/Menominee", US_C},
+        {"America/Matamoros", US_C}, {"America/Rankin_Inlet", US_C}, {"America/Resolute", US_C},
+        {"America/Denver", US_M}, {"America/Boise", US_M}, {"America/Edmonton", US_M},
+        {"America/Cambridge_Bay", US_M}, {"America/Inuvik", US_M}, {"America/Ciudad_Juarez", US_M},
+        {"America/Los_Angeles", US_P}, {"America/Vancouver", US_P}, {"America/Tijuana", US_P},
+        {"America/Anchorage", US_AK}, {"America/Juneau", US_AK}, {"America/Sitka", US_AK},
+        {"America/Nome", US_AK}, {"America/Yakutat", US_AK}, {"America/Metlakatla", US_AK},
+        {"America/Halifax", CA_AT}, {"America/Glace_Bay", CA_AT}, {"America/Moncton", CA_AT},
+        {"America/Goose_Bay", CA_AT}, {"America/Thule", CA_AT}, {"Atlantic/Bermuda", CA_AT},
+        {"America/St_Johns", "NST3:30NDT,M3.2.0,M11.1.0"},
+        {"Australia/Sydney", AU_E}, {"Australia/Melbourne", AU_E}, {"Australia/Hobart", AU_E},
+        {"Australia/Canberra", AU_E}, {"Australia/ACT", AU_E}, {"Australia/NSW", AU_E},
+        {"Australia/Victoria", AU_E}, {"Australia/Tasmania", AU_E},
+        {"Australia/Adelaide", AU_C}, {"Australia/Broken_Hill", AU_C},
+        {"Pacific/Auckland", NZ}, {"Antarctica/McMurdo", NZ},
+    };
+    for (const auto &e : ZONES) if (!strcmp(z, e.name)) return e.tz;
+    if (!strncmp(z, "America/Indiana/", 16) || !strncmp(z, "America/Kentucky/", 17)) return US_E;
+    if (!strncmp(z, "America/North_Dakota/", 21)) return US_C;
+    if (!strncmp(z, "Europe/", 7)) return EU_CET;   // the rest of Europe is Central European Time
+    return nullptr;
+}
+
+// THE way the time zone is saved: every writer comes through here, so the zone and where it
+// came from can never be saved apart. Knowing the source is what lets loadSettings() and
+// tz_follow_home() tell an owner's choice from a guess. Without it, a migration inherited
+// from upstream turned the correct Berlin rule back into the Arizona default at every boot,
+// because upstream's old default had been that same string (found 2026-10-25, the morning
+// the clocks went back). The caller opens and closes `p`.
+static void tz_store(Preferences &p, const char *tz, uint8_t src) {
+    p.putString("tz", tz);
+    p.putUChar("tzSrc", src);
+    g_tz = tz;
+    g_tzSrc = src;
+}
+
+// Called with each forecast (network task). Follows the home's zone unless the owner chose
+// one on the web page: it replaces the factory default, a bare offset from locating, and its
+// own earlier answer when the home has moved. A bare offset chosen on the web page stays.
+static void tz_follow_home(const char *iana) {
+    if (g_tzSrc == TZ_SRC_CHOSEN) return;
+    if (g_tzSrc == TZ_SRC_LEGACY && !g_tz.startsWith("<") && g_tz != TZ_STR) return;   // an old choice
+    const char *rule = posix_tz_for_iana(iana);
+    if (!rule || g_tz == rule) return;
+    Serial.printf("[tz] %s: %s -> %s\n", iana, g_tz.c_str(), rule);
+    Preferences p;
+    p.begin("capsuleradar", false);
+    tz_store(p, rule, TZ_SRC_HOME);
+    p.end();
+    setenv("TZ", g_tz.c_str(), 1);
+    tzset();
+    const time_t now = time(nullptr);
+    struct tm lt; localtime_r(&now, &lt);
+    Serial.printf("[tz] local time now %02d:%02d %s\n", lt.tm_hour, lt.tm_min, lt.tm_isdst > 0 ? "(summer time)" : "");
+}
 
 // Upsert this poll's contacts into the persistent table, drop what has aged past
 // AC_HARD_EXPIRE_MS, then hand the render side a flat snapshot of everything left.
@@ -503,6 +606,7 @@ static void adsb_task(void*) {
                               g_settings.homeLat, g_settings.homeLon);
                 WeatherSnapshot forecast;
                 if (weather_fetch(g_settings.homeLat, g_settings.homeLon, forecast)) {
+                    tz_follow_home(forecast.tz);   // summer time, if the zone is still a bare offset
                     weather_store(forecast);
                     g_weatherDirty = true;
                     nextWeatherAt = millis() + WEATHER_REFRESH_MS;
@@ -782,9 +886,12 @@ static void loadSettings() {
                               // (tier 0). Zoom is gone (see weather_press_cycle), so this is
                               // pinned to 0 regardless of any old saved "wxZoom2" value.
     g_tz               = p.getString("tz", TZ_STR);
+    g_tzSrc            = p.getUChar("tzSrc", TZ_SRC_LEGACY);
     // Migrate off the old forked-in Spain default so a device that has it saved (from
     // before the default changed) still lands on local time. Re-locating overwrites this.
-    if (g_tz == "CET-1CEST,M3.5.0,M10.5.0/3") g_tz = TZ_STR;
+    // Only a zone saved before tzSrc existed: the same string is now also the right answer
+    // for a home in Germany, and dropping it at every boot left that clock on Arizona time.
+    if (g_tzSrc == TZ_SRC_LEGACY && g_tz == "CET-1CEST,M3.5.0,M10.5.0/3") g_tz = TZ_STR;
     g_bigText          = p.getBool("bigtext", false);
     g_chimeIdx         = p.getInt("chimeIdx", 0);
     // What this place is CALLED. Every path that sets a location already learns a name:
@@ -1668,10 +1775,9 @@ static bool ip_lookup_location(double &lat, double &lon) {
     if (off != 0x7FFFFFFFL && off >= -50400 && off <= 50400) {
         char tz[24];
         posix_tz_from_offset(off, tz, sizeof(tz));
-        g_tz = tz;
         Preferences p;
         p.begin("capsuleradar", false);
-        p.putString("tz", tz);
+        tz_store(p, tz, TZ_SRC_LOCATED);   // a bare offset; the next forecast adds summer time
         p.end();
         Serial.printf("[locate] tz offset %lds -> %s\n", off, tz);
     }
@@ -1703,10 +1809,9 @@ void host_set_location_from_studio(const char *name, double lat, double lon,
     if (haveTz && tzOffsetSec >= -50400 && tzOffsetSec <= 50400) {
         char tz[24];
         posix_tz_from_offset(tzOffsetSec, tz, sizeof(tz));
-        g_tz = tz;
         Preferences p;
         p.begin("capsuleradar", false);
-        p.putString("tz", tz);
+        tz_store(p, tz, TZ_SRC_LOCATED);   // a bare offset; the next forecast adds summer time
         p.end();
         setenv("TZ", g_tz.c_str(), 1);
         tzset();
@@ -2688,7 +2793,7 @@ static void handleSave() {
     if (g_web.hasArg("theme")) p.putInt("theme", g_web.arg("theme").toInt());
     if (g_web.hasArg("tz")) {
         const int i = g_web.arg("tz").toInt();
-        if (i >= 0 && i < TZOPTS_N) p.putString("tz", TZOPTS[i].tz);
+        if (i >= 0 && i < TZOPTS_N) tz_store(p, TZOPTS[i].tz, TZ_SRC_CHOSEN);
     }
     p.end();
     // The warning that used to be built here is gone with the thing it warned about. A
@@ -3674,6 +3779,7 @@ void setup() {
     battery_enable_codec_rail();   // power the ES8311 analog rail before audio init
 
     setenv("TZ", g_tz.c_str(), 1); tzset();   // local time for display even before NTP (loadSettings ran above)
+    Serial.printf("[tz] %s (source %u)\n", g_tz.c_str(), (unsigned)g_tzSrc);
     rtc_begin();
     rtc_seed_clock();                   // offline clock/date from the PCF85063
     clock_wind::begin();            // the stored wind, before any screen asks about it
