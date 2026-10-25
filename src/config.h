@@ -7,7 +7,7 @@
 // "1.4.2", said "up to date", and left an Orb missing everything in that list. THEME_CAPS
 // exists because this stopped moving; it covers theme settings and nothing else, so a new
 // command or a deleted screen is invisible to it. Move this too.
-#define FW_VERSION "2.33.6"   // shown on the web config page + Stats screen
+#define FW_VERSION "2.33.7"   // shown on the web config page + Stats screen
 // Edit pins below: replace every -1 with the value from the Waveshare factory demo
 // (see docs/HARDWARE.md and docs/SETUP.md). Do NOT guess them.
 
@@ -281,34 +281,21 @@ static_assert(WX_RADAR_RANGE_KM <= WX_RADAR_FETCH_KM, "the weather map would cro
 #define MOTION_WAKE_LSB     500
 
 // ---------- ADS-B API (free, non-commercial) ----------
-// Plain HTTP on purpose, and it is what makes the radar work at all.
+// HTTPS since 2.33.7, taken from Zion's 2.18.00 (f0c1b13). adsb.lol stopped answering plain
+// HTTP around 2026-10-19: every request got a 301 to https://, and the fork's scope sat empty
+// under "no aircraft data". Both providers are now asked directly over HTTPS, one TLS
+// session at a time; the PSRAM for it comes from net_fetch.h's permit (adsb_client.cpp).
+// This fork can afford that since 2.33.3, when Settings moved to PSRAM and left ~69 KB of
+// internal RAM free with a 31.7 KB largest block, the same figure Zion's validation shows.
 //
-// A TLS handshake needs two contiguous ~16 KB buffers from internal RAM, and this board
-// cannot offer them: the largest free internal block is ~17 KB no matter what else is
-// freed. That was measured, not assumed. Routing every LVGL allocation to PSRAM changed
-// the number by exactly zero bytes, because it is a property of the memory map rather than
-// fragmentation anyone can tidy up. So every HTTPS fetch died with '-32512 SSL memory
-// allocation failed', which left the radar with no aircraft, the weather blank, and the
-// device rebooting itself every ~27 minutes on the stuck-feed watchdog.
-//
-// Dropping to HTTP costs almost nothing here, because ADSB_HTTPS_INSECURE was already 1:
-// certificates were never verified, so TLS was only hiding public flight data from
-// eavesdroppers, never authenticating the source. No credentials are sent. adsb.lol serves
-// this endpoint over HTTP.
-//
-// There is no fallback host. The airplanes.live entry that used to sit here was never
-// referenced by any code, and as of 2026-08-23 that service answers 403 to every request
-// with a note demanding you email them for permission first, so it was a fallback in name
-// only. The nearest free replacement, opendata.adsb.fi, redirects HTTP to HTTPS and so is
-// unreachable from this device at all (see the TLS note above). Until a gateway exists to
-// hold real failover off-device, this feed is genuinely single-sourced, and adsb.lol's
-// slow spells (a 32.2 s TCP connect measured 2026-08-22) are felt directly by the scope.
+// The edge pool that used to live here (DNS-learned addresses, rotation, cooldowns, the
+// 0.0.0.0 guard and dropping dead addresses) is gone with plain HTTP: connecting by name is
+// what supplies the TLS SNI, and adsb.fi is a real second provider instead.
 #define ADSB_PRIMARY_HOST   "api.adsb.lol"          // GET /v2/point/{lat}/{lon}/{radius_nm}
-// What that host is called ON SCREEN, kept next to the host so the two cannot drift. UX-039
-// wants a failure to name the source that could not be reached, and the full hostname is too
-// long for a banner in a 466 px circle — this is the short form a person can act on.
+#define ADSB_FALLBACK_HOST  "opendata.adsb.fi"      // GET /api/v3/lat/{lat}/lon/{lon}/dist/{nm}
+// What the feed is called ON SCREEN, in "Keine Flugdaten\n%s antwortet nicht". UX-039 wants
+// a failure to name the source that could not be reached; the primary is the one to name.
 #define ADSB_SOURCE_NAME    "adsb.lol"
-#define ADSB_PRIMARY_TLS    0
 // Who this device says it is, to every service it calls.
 //
 // Not a cosmetic string. A User-Agent is how an API operator sees who is calling and where
@@ -342,34 +329,8 @@ static_assert(WX_RADAR_RANGE_KM <= WX_RADAR_FETCH_KM, "the weather map would cro
 // imagery, route lookup, photos and the news gateway. Kept as an alias rather than renamed
 // at all nine call sites, which would be a large diff to say one small thing.
 #define ADSB_USER_AGENT     ORB_USER_AGENT
-#define ADSB_HTTPS_INSECURE 1               // 1 = setInsecure() (hobby). 0 = use pinned root CA.
-// How many distinct addresses to keep for the feed. Rate limiting is per-edge, so having
-// somewhere else to ask is worth more than any backoff. Learned by DNS at runtime.
-#define ADSB_EDGE_POOL      5
-// Edges attempted per poll. Deliberately small: see the socket-exhaustion note in
-// adsb_client.cpp. The pool still rotates BETWEEN polls, so all of it stays in play.
-// Three, not two. Measured against the live service 2026-08-29: the same three addresses
-// behind api.adsb.lol answered a laptop on Zion's own network as open, open, dead one
-// minute and timeout, timeout, 200-in-355ms ten minutes later. The service is not down, it
-// FLAPS, and which door opens changes by the minute. Roughly one attempt in six succeeded.
-// Two tries against that is a coin toss lost most of the time, which on the dial looks like
-// aircraft that have stopped moving under a banner saying there is no data.
-#define ADSB_TRIES_PER_POLL 3
-// Connect and read budgets. The read budget was 8000 and the service was measured taking
-// 11.6 s to answer during a bad spell on 2026-08-22, so every request failed for a reason
-// that had nothing to do with this device.
-// Patience, because the measurements demand it. During one of this provider's slow spells
-// a plain TCP connect to api.adsb.lol took 32.2 SECONDS from a laptop on the same network,
-// while adsb.fi and adsbdb answered in 0.0-0.2 s. At a 6 s budget the Orb was hanging up on
-// a server that was going to answer, then reporting a transport error, then backing off —
-// guaranteeing no aircraft for the whole of an outage the device could have ridden out.
-//
-// The cost of waiting is bounded and lands on the feed task, not the UI: worst case is this
-// times ADSB_TRIES_PER_POLL. The cost of NOT waiting is measured, and it is every aircraft.
-// Five seconds, down from fifteen. A server that is going to answer answers in about a
-// third of one; the fifteen was there to be patient with a slow server, and what it actually
-// bought was fifteen seconds of a ten-second poll cycle spent waiting on a socket that was
-// never going to open. Being patient with a dead door is not patience, it is the whole poll.
+#define ADSB_HTTPS_INSECURE 1               // 1 = setInsecure() (hobby). 0 = verify with SDK root CA bundle.
+// TCP connection/read budgets; the TLS handshake has a separate 10 s limit.
 #define ADSB_CONNECT_MS     5000
 #define ADSB_READ_MS        20000
 

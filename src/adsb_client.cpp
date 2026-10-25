@@ -1,19 +1,25 @@
-// Fetch nearby aircraft from airplanes.live (fallback adsb.lol) and parse the
+// Fetch nearby aircraft over HTTPS from adsb.lol (fallback adsb.fi) and parse the
 // readsb JSON into a vector<Aircraft>.
 //
 // Memory safety (important on the ESP32): we parse straight from the HTTP stream
 // (no full-body String), use an ArduinoJson field filter so only the ~12 fields we
-// need are kept, and hard-cap the number of aircraft (ADSB_MAX_AIRCRAFT). The radar
-// then keeps only the nearest ~20 for display.
+// need are kept. The nearest ADSB_MAX_AIRCRAFT contacts are retained for display.
 #include "adsb_client.h"
 #include "config.h"
 #include "geo.h"           // haversineKm — keep the nearest N aircraft
+#include "net_fetch.h"     // NetTlsPermit: this fork gives TLS its PSRAM only by permit
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>   // v7
+#include <StreamUtils.h>
 #include <esp_heap_caps.h>
-#include <memory>          // std::unique_ptr for the TLS client
+#include <algorithm>
+
+#if !ADSB_HTTPS_INSECURE
+extern const uint8_t rootBundleStart[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t rootBundleEnd[] asm("_binary_x509_crt_bundle_end");
+#endif
 
 // Parse the JSON in PSRAM, not internal RAM. Otherwise the per-poll JSON alloc/free
 // churn fragments the internal heap and, after a while, mbedTLS can't find a large
@@ -57,13 +63,6 @@ public:
     void flush() override { _source.flush(); }
     size_t write(uint8_t) override { return 0; }
     size_t bytesRead() const { return _bytesRead; }
-    // Bytes actually taken OFF THE SOCKET, which is not the same as bytes handed to the
-    // parser: this reads ahead in 1 KB chunks, so at the closing brace the socket sits
-    // further along than the parser does. Draining to Content-Length using the parser's
-    // count therefore waits for bytes that were already consumed, times out, and drops the
-    // connection on EVERY poll — measured as "sockets opened=28 reused=0", i.e. keep-alive
-    // never once worked, which is what exhausted the socket table.
-    size_t socketBytes() const { return _socketBytes; }
 
 private:
     // Keeps the original contract: wait for bytes rather than treating a momentary empty
@@ -77,7 +76,7 @@ private:
             if (avail > 0) {
                 const size_t want = avail < (int)sizeof(_buf) ? (size_t)avail : sizeof(_buf);
                 const int got = _source.readBytes(_buf, want);
-                if (got > 0) { _len = (size_t)got; _socketBytes += (size_t)got; return true; }
+                if (got > 0) { _len = (size_t)got; return true; }
             }
             // Nothing right now. Give up only on the same timeout the single-byte reader
             // used. Deliberately NOT down-casting _source to ask whether the peer is still
@@ -93,7 +92,6 @@ private:
     uint8_t _buf[1024];
     size_t  _pos = 0;
     size_t  _len = 0;
-    size_t  _socketBytes = 0;
     Stream& _source;
     size_t _bytesRead = 0;
 };
@@ -102,171 +100,15 @@ void AdsbClient::begin(double homeLat, double homeLon, float rangeKm) {
     _lat = homeLat; _lon = homeLon; _rangeKm = rangeKm;
 }
 
-// ---------------------------------------------------------------- edge pool
-//
-// Rate limiting on this feed is applied PER EDGE, not per account and not per client.
-// Measured directly on 2026-08-22: with five addresses behind api.adsb.lol, one answered
-// 429 while four others answered 200 in the same second. A refusal is therefore not a
-// reason to stop asking, it is a reason to ask a different door.
-//
-// DNS hands back one address at a time and lwIP caches it, so the pool is LEARNED rather
-// than hardcoded: every resolve that returns something new is remembered. Hardcoding the
-// addresses would work today and rot silently the first time the operator renumbers, and a
-// dead hardcoded address costs a full connect timeout on every rotation.
+// One attempt per provider per poll. Cooldowns apply to the whole provider,
+// including HTTP refusals: do not rotate IP addresses to evade a rate limit.
 namespace {
-
-IPAddress s_edge[ADSB_EDGE_POOL];
-uint8_t   s_edgeN  = 0;      // how many distinct addresses learned so far
-uint8_t   s_edgeAt = 0;      // which one to try first next time
-// When each edge may be tried again. A DEAD edge is not the same as a busy one, and the
-// pool above treated them identically.
-//
-// Measured on Zion's Orb, 2026-08-29: api.adsb.lol resolved to three addresses and
-// 89.58.34.223 refused to open a socket at all, while the other two answered a laptop on the
-// same network in 353 ms. The Orb tried the dead one, waited out the full fifteen-second
-// connect, tried one more, gave up, and backed off. Six polls in seventy seconds, none good,
-// with a working feed two addresses away. The scope sat there holding aircraft that had
-// stopped moving.
-//
-// Rate limiting is per edge, so a REFUSAL is a reason to ask a different door and come back
-// soon. A connect that never opens is a different thing: nothing is listening, and asking
-// again in ten seconds only spends the poll. So a failure to connect parks that address for
-// a while, and the pool spends its two tries on doors that might open.
-uint32_t  s_edgeNextOkMs[ADSB_EDGE_POOL] = { 0 };
-// How many times in a row this address has refused to open a socket, and the point at which
-// the pool stops believing in it.
-//
-// NOTHING USED TO LEAVE THIS POOL. It only grew, and the cooldowns rotated between whatever
-// was in it, so an address that went permanently bad was tried, rested forty-five seconds,
-// and tried again, for as long as the Orb stayed switched on. A reboot was the only thing
-// that cleared it, which is exactly what people reported: rubenscamp_43060, 2026-10-05,
-// "when the error occurs the only way I have found to get it back is to reset the unit".
-//
-// The 0.0.0.0 guard above stops one way of getting a dead address in. This stops it mattering
-// which way it got in. Six consecutive refusals is comfortably past flapping: the service's
-// own addresses come back inside a minute, and six failures spread across the cooldown is
-// four and a half minutes of an address doing nothing at all.
-//
-// Dropping it is not forgetting it forever. learn_edge() runs on its own schedule and will
-// put it back if DNS still hands it out AND it works, which is the right way round.
-uint8_t   s_edgeFails[ADSB_EDGE_POOL] = { 0 };
-constexpr uint8_t EDGE_DROP_AFTER = 6;
-
-void drop_edge(uint8_t i) {
-    if (i >= s_edgeN) return;
-    Serial.printf("[adsb] %s has refused %u times running; dropping it from the pool\n",
-                  s_edge[i].toString().c_str(), (unsigned)s_edgeFails[i]);
-    for (uint8_t j = (uint8_t)(i + 1); j < s_edgeN; ++j) {
-        s_edge[j - 1]        = s_edge[j];
-        s_edgeNextOkMs[j - 1] = s_edgeNextOkMs[j];
-        s_edgeFails[j - 1]    = s_edgeFails[j];
-    }
-    --s_edgeN;
-    s_edgeNextOkMs[s_edgeN] = 0;
-    s_edgeFails[s_edgeN]    = 0;
-    // The cursor indexes a list that just got shorter, so bring it back inside it rather
-    // than leaving it to wrap onto whichever address happens to be at that position now.
-    if (s_edgeN == 0) s_edgeAt = 0;
-    else if (s_edgeAt >= s_edgeN) s_edgeAt = (uint8_t)(s_edgeAt % s_edgeN);
-}
-// Forty-five seconds, not five minutes. The first version of this rested a failed address
-// for five minutes, which is right for an address that is DEAD and wrong for this service,
-// which flaps: the same address that refuses now answers in 355 ms a minute later. Resting
-// it for five minutes throws away a working door. This is just long enough to stop spending
-// both tries of the next poll on the same silent address.
-constexpr uint32_t EDGE_COOLDOWN_MS = 45UL * 1000UL;
-
-bool edge_usable(uint8_t i) {
-    const uint32_t until = s_edgeNextOkMs[i];
+constexpr uint32_t PROVIDER_RETRY_MS = 60000;
+constexpr uint32_t REFUSED_RETRY_MS = 300000;
+constexpr uint32_t MIN_REQUEST_MS = 1100; // adsb.fi permits at most 1 request/sec/IP
+bool ready(uint32_t until) {
     return until == 0 || (int32_t)(millis() - until) >= 0;
 }
-
-void learn_edge() {
-    IPAddress ip;
-    if (!WiFi.hostByName(ADSB_PRIMARY_HOST, ip)) return;
-    // A failed lookup can still come back "successful" with 0.0.0.0, and the pool kept it for
-    // good: from then on one of the two tries of EVERY poll was spent connecting to nothing,
-    // which turned a slow spell at adsb.lol into a run of failed polls (seen 2026-10-03).
-    if (ip == IPAddress(0, 0, 0, 0)) return;
-    for (uint8_t i = 0; i < s_edgeN; ++i) if (s_edge[i] == ip) return;
-    if (s_edgeN < ADSB_EDGE_POOL) {
-        s_edge[s_edgeN++] = ip;
-        Serial.printf("[adsb] learned edge %s (%u known)\n", ip.toString().c_str(), (unsigned)s_edgeN);
-    }
-}
-
-// One line of a response header, read without Arduino String. Headers are a few hundred
-// bytes so byte-at-a-time is fine here; the BODY is what gets the buffered reader.
-int read_line(WiFiClient &c, char *out, size_t cap, uint32_t deadline) {
-    size_t n = 0;
-    while ((int32_t)(millis() - deadline) < 0) {
-        const int ch = c.read();
-        if (ch < 0) { delay(1); continue; }
-        if (ch == '\n') { if (n && out[n - 1] == '\r') --n; out[n] = 0; return (int)n; }
-        if (n + 1 < cap) out[n++] = (char)ch;
-    }
-    return -1;
-}
-
-} // namespace
-
-// A whole HTTP/1.1 GET, by hand, onto a socket we own.
-//
-// Deliberately not HTTPClient. Two reasons, both measured. It cannot send a Host header
-// that differs from the address it dialled (addHeader silently drops "Host", the same trap
-// that had this device calling itself ESP32HTTPClient for months), and addressing a chosen
-// edge by IP while still saying "Host: api.adsb.lol" is the entire point of the pool above.
-// And it rebuilds several Arduino Strings per request on an internal heap whose largest
-// free block has been as low as 500 bytes on this board.
-//
-// Returns the HTTP status, or a negative transport error.
-int AdsbClient::rawGet(const IPAddress &ip, const char *path, long &contentLen) {
-    contentLen = -1;
-    // Reuse the socket when it is already open to the SAME edge; otherwise start clean.
-    if (_plain.connected() && !(_epIp == ip)) { _plain.stop(); }
-    if (_plain.connected()) {
-        ++_reuseCount;
-    } else {
-        // Every one of these costs a socket, and a closed TCP socket does not disappear —
-        // it sits in TIME_WAIT for a while holding an lwIP control block. That pool is small
-        // (order of a dozen), which is why rotating hard across five edges worked for about
-        // thirteen polls after a reboot and then failed EVERY connect while the same servers
-        // answered a laptop fine. Reuse is not an optimisation here, it is the difference
-        // between working and running out of sockets.
-        ++_openCount;
-        if (!_plain.connect(ip, 80, ADSB_CONNECT_MS)) return -1;
-        _epIp = ip;
-    }
-
-    char req[320];
-    const int n = snprintf(req, sizeof(req),
-        "GET %s HTTP/1.1\r\n"
-        "Host: %s\r\n"
-        "User-Agent: %s\r\n"
-        "Accept: application/json\r\n"
-        "Connection: keep-alive\r\n\r\n",
-        path, ADSB_PRIMARY_HOST, ADSB_USER_AGENT);
-    if (n <= 0 || _plain.write((const uint8_t *)req, (size_t)n) != (size_t)n) { _plain.stop(); return -2; }
-
-    const uint32_t deadline = millis() + ADSB_READ_MS;
-    char line[160];
-    if (read_line(_plain, line, sizeof(line), deadline) < 0) { _plain.stop(); return -3; }
-    // "HTTP/1.1 200 OK"
-    int status = 0;
-    { const char *sp = strchr(line, ' '); if (sp) status = atoi(sp + 1); }
-    if (status <= 0) { _plain.stop(); return -4; }
-
-    bool keepAlive = true;
-    for (;;) {
-        const int len = read_line(_plain, line, sizeof(line), deadline);
-        if (len < 0) { _plain.stop(); return -5; }
-        if (len == 0) break;                                   // blank line: body follows
-        if (!strncasecmp(line, "Content-Length:", 15)) contentLen = atol(line + 15);
-        else if (!strncasecmp(line, "Connection:", 11) && strcasestr(line, "close")) keepAlive = false;
-        else if (!strncasecmp(line, "Transfer-Encoding:", 18) && strcasestr(line, "chunked")) contentLen = -2;
-    }
-    _canKeepAlive = keepAlive;
-    return status;
 }
 
 bool AdsbClient::poll(std::vector<Aircraft>& out) {
@@ -274,78 +116,89 @@ bool AdsbClient::poll(std::vector<Aircraft>& out) {
     _refused = false;
     _lastStatus = 0;
     _refusedStatus = 0;
-
-    // Keep discovering addresses. Cheap (a cached lookup most of the time) and it is what
-    // keeps the pool current without anything being written down in the source.
-    if (s_edgeN < ADSB_EDGE_POOL) learn_edge();
-    if (s_edgeN == 0) return false;                            // no DNS yet; try again next poll
-
-    // At most TWO edges per poll, never all of them. Trying every edge on every poll is
-    // what exhausted the socket table: five fresh connections every ten seconds, each
-    // lingering in TIME_WAIT long after it closed. One retry is enough to route around a
-    // single rate-limited or sulking server, and the pool still rotates across polls.
-    // Walk the WHOLE pool looking for doors that are not on cooldown, but still only knock
-    // on ADSB_TRIES_PER_POLL of them: the cap exists because trying every edge every poll is
-    // what exhausted the socket table, and that reasoning is unchanged. What changes is that
-    // the two tries are no longer spent on an address already known not to answer.
-    uint8_t used = 0;
-    for (uint8_t step = 0; step < s_edgeN && used < ADSB_TRIES_PER_POLL; ++step) {
-        const uint8_t idx = (uint8_t)((s_edgeAt + step) % s_edgeN);
-        if (!edge_usable(idx)) continue;
-        ++used;
-        if (fetchFrom(s_edge[idx], out)) {
-            s_edgeAt = idx;                                    // stay on what works
-            s_edgeNextOkMs[idx] = 0;                           // and forgive it entirely
-            s_edgeFails[idx]    = 0;                           // including its history
+    for (uint8_t provider = 0; provider < 2; ++provider) {
+        if (!ready(_nextTryMs[provider])) continue;
+        // Set the minimum spacing even on success. Usually the normal poll
+        // interval is longer, but range changes can request an immediate poll.
+        _nextTryMs[provider] = millis() + MIN_REQUEST_MS;
+        if (fetchFrom(provider, out)) {
+            _refused = false;
+            _refusedStatus = 0;
+            _lastStatus = 200;
             return true;
         }
-        // Only a transport failure parks an address. A 429 means the server is there and
-        // busy, which is exactly the case the rotation was built for and must stay in it.
-        if (_lastStatus <= 0) {
-            s_edgeNextOkMs[idx] = millis() + EDGE_COOLDOWN_MS;
-            if (s_edgeFails[idx] < 255) ++s_edgeFails[idx];
-            Serial.printf("[adsb] %s did not answer (%u in a row); resting it for %lu s\n",
-                          s_edge[idx].toString().c_str(), (unsigned)s_edgeFails[idx],
-                          (unsigned long)(EDGE_COOLDOWN_MS / 1000UL));
-            // Never the last one. An empty pool cannot be polled at all, and learn_edge only
-            // refills it when DNS answers, so emptying it on a WiFi outage would take the
-            // feed down until the next lookup rather than until the next good connect.
-            if (s_edgeFails[idx] >= EDGE_DROP_AFTER && s_edgeN > 1) { drop_edge(idx); break; }
+        const bool refused = _lastStatus >= 400 && _lastStatus < 500;
+        _nextTryMs[provider] = millis() + (refused ? REFUSED_RETRY_MS : PROVIDER_RETRY_MS);
+        _providerStatus[provider] = _lastStatus;
+    }
+    // Preserve a server refusal while that provider is cooling down, so the
+    // caller keeps its refusal backoff instead of treating a skipped request
+    // as a TLS/heap failure. A successful fallback above clears it immediately.
+    for (uint8_t provider = 0; provider < 2; ++provider) {
+        const int status = _providerStatus[provider];
+        if (!ready(_nextTryMs[provider]) && status >= 400 && status < 500) {
+            _refused = true;
+            _refusedStatus = status;
         }
     }
-    // Every door is on cooldown: forget the cooldowns rather than sit out the outage. Being
-    // wrong about one address is recoverable; refusing to try any of them is not.
-    if (used == 0 && s_edgeN > 0) {
-        for (uint8_t i = 0; i < s_edgeN; ++i) s_edgeNextOkMs[i] = 0;
-        Serial.println("[adsb] every edge was resting; trying them all again");
-    }
-    if (s_edgeN) s_edgeAt = (uint8_t)((s_edgeAt + 1) % s_edgeN);   // rotate for next time
-    Serial.printf("[adsb] poll gave up after %u edge(s); sockets opened=%lu reused=%lu\n",
-                  (unsigned)used, (unsigned long)_openCount, (unsigned long)_reuseCount);
     return false;
 }
 
-bool AdsbClient::fetchFrom(const IPAddress &ip, std::vector<Aircraft>& out) {
-    const double nm = _rangeKm * 0.539957;            // km -> nautical miles (API radius unit)
-    char path[96];
-    snprintf(path, sizeof(path), "/v2/point/%.4f/%.4f/%.0f", _lat, _lon, nm);
+bool AdsbClient::fetchFrom(uint8_t provider, std::vector<Aircraft>& out) {
+    const char *host = provider == 0 ? ADSB_PRIMARY_HOST : ADSB_FALLBACK_HOST;
+    const double nm = std::min(250.0, std::max(1.0, _rangeKm * 0.539957));
+    char url[192];
+    if (provider == 0)
+        snprintf(url, sizeof(url), "https://%s/v2/point/%.4f/%.4f/%.0f", host, _lat, _lon, nm);
+    else
+        snprintf(url, sizeof(url), "https://%s/api/v3/lat/%.4f/lon/%.4f/dist/%.0f", host, _lat, _lon, nm);
 
-    long contentLen = -1;
-    const int code = rawGet(ip, path, contentLen);
+    // Keep only one TLS connection alive at a time, and release its PSRAM before
+    // the weather/photo clients run on this same task. No IP pinning: connecting
+    // by hostname also supplies the correct TLS SNI name.
+    //
+    // This fork: mbedTLS gets PSRAM only while a caller holds a permit (net_fetch.h), so the
+    // permit is taken before the client exists and released after it is gone. Declared
+    // first so it is destroyed last.
+    NetTlsPermit tls;
+    WiFiClientSecure client;
+#if ADSB_HTTPS_INSECURE
+    client.setInsecure(); // preserves existing public-data certificate policy
+#else
+    client.setCACertBundle(rootBundleStart, (size_t)(rootBundleEnd - rootBundleStart));
+#endif
+    client.setHandshakeTimeout(10);
+    HTTPClient http;
+    // adsb.lol rejects HTTP/1.0 with 426 Upgrade Required. HTTP/1.1 may
+    // return chunks, which are decoded below before ArduinoJson sees them.
+    http.useHTTP10(false);
+    http.setReuse(false);
+    http.setConnectTimeout(ADSB_CONNECT_MS);
+    http.setTimeout(ADSB_READ_MS);
+    if (!http.begin(client, url)) { _lastStatus = -1; return false; }
+    http.setUserAgent(ADSB_USER_AGENT);
+    http.addHeader("Accept", "application/json");
+    http.setAcceptEncoding("identity");
+    const char *headers[] = {"Transfer-Encoding"};
+    http.collectHeaders(headers, 1);
+    const int code = http.GET();
     _lastStatus = code;
-    // Any 4xx is a server declining, not this board failing. Recorded so the caller can back
-    // off and, above all, NOT reboot over it. With the pool above, a 4xx from one edge is
-    // handled by simply trying the next one first.
-    if (code >= 400 && code < 500) { _refused = true; _refusedStatus = code; }
+    _providerStatus[provider] = code;
+    Serial.printf("[adsb] HTTPS %s -> %d internal_largest=%u psram_free=%u psram_largest=%u\n",
+                  host, code,
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
     if (code != 200) {
-        Serial.printf("[adsb] %s -> %d  heap=%u largest=%u\n",
-                      ip.toString().c_str(), code,
-                      (unsigned)ESP.getFreeHeap(),
-                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-        if (code < 0) _plain.stop();                   // transport failure: do not reuse it
+        if (code < 0) {
+            char error[128] = {};
+            const int tlsError = client.lastError(error, sizeof(error));
+            Serial.printf("[adsb] TLS error %d: %s\n", tlsError, error);
+        }
+        http.end();
+        client.stop();
         return false;
     }
-    if (contentLen == -2) { Serial.println("[adsb] chunked response, unsupported"); _plain.stop(); return false; }
 
     // Only keep the fields we use -> much smaller parsed document.
     JsonDocument filter(&s_jsonPsram);
@@ -358,35 +211,25 @@ bool AdsbClient::fetchFrom(const IPAddress &ip, std::vector<Aircraft>& out) {
             filter[k][0][f] = true;
 
     JsonDocument doc(&s_jsonPsram);
-    ReliableJsonStream jsonStream(_plain);
-    DeserializationError err = deserializeJson(doc, jsonStream,
+    ReliableJsonStream jsonStream(http.getStream());
+    ChunkDecodingStream decoded(jsonStream);
+    Stream &body = http.header("Transfer-Encoding").equalsIgnoreCase("chunked")
+        ? static_cast<Stream&>(decoded) : static_cast<Stream&>(jsonStream);
+    DeserializationError err = deserializeJson(doc, body,
                                                DeserializationOption::Filter(filter));
+    // Release handshake/session buffers before building the display vector.
+    http.end();
+    client.stop();
     if (err) {
-        Serial.printf("[adsb] %s parse failed: %s; expected=%ld read=%u\n",
-                      ip.toString().c_str(), err.c_str(), contentLen,
-                      (unsigned)jsonStream.bytesRead());
-        _plain.stop();                       // unknown position in the stream: never reuse it
+        Serial.printf("[adsb] %s parse failed: %s; read=%u\n",
+                      host, err.c_str(), (unsigned)jsonStream.bytesRead());
+        _lastStatus = -2;
         return false;
-    }
-    // Keep-alive only works if the socket is left exactly at the end of this body. The
-    // parser stops on the closing brace, so anything the server appended after it (a
-    // trailing newline is common) has to be consumed or it becomes the first bytes of the
-    // NEXT response and corrupts a perfectly good poll.
-    if (_canKeepAlive && contentLen > 0) {
-        long left = contentLen - (long)jsonStream.socketBytes();
-        const uint32_t until = millis() + 1000;
-        while (left > 0 && (int32_t)(millis() - until) < 0) {
-            if (_plain.read() < 0) { delay(1); continue; }
-            --left;
-        }
-        if (left > 0) _plain.stop();         // could not get clean: start fresh next time
-    } else {
-        _plain.stop();
     }
 
     JsonArrayConst arr = doc["ac"].as<JsonArrayConst>();
     if (arr.isNull()) arr = doc["aircraft"].as<JsonArrayConst>();
-    if (arr.isNull()) return false;
+    if (arr.isNull()) { _lastStatus = -2; return false; }
 
     // Keep the ADSB_MAX_AIRCRAFT *nearest* aircraft (not just the first ones the feed happens to
     // list), so busy areas still show the traffic closest to you. We gate by distance BEFORE
@@ -449,5 +292,6 @@ bool AdsbClient::fetchFrom(const IPAddress &ip, std::vector<Aircraft>& out) {
 
     out.swap(tmp);
     _lastOkMs = now;
+    Serial.printf("[adsb] source=%s aircraft=%u\n", host, (unsigned)out.size());
     return true;
 }

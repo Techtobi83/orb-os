@@ -487,12 +487,11 @@ static void adsb_task(void*) {
             // This fork dropped the ten-minute once-a-minute keep-warm that followed leaving
             // the tracker. Its polls, and the kept-alive socket between them, cost internal
             // RAM that the Live Cam's stream needs: with the Cold War theme the largest free
-            // block fell to 1.5 KB with both running. Leaving the tracker now also closes the
-            // feed's socket.
+            // block fell to 1.5 KB with both running. (The feed kept a socket open between polls
+            // then; since 2.33.7 each poll opens and closes its own HTTPS session.)
             static bool s_wasOnScreen = false;
             const bool onScreen = g_radarViewActive;
             if (onScreen && !s_wasOnScreen) lastPoll = 0;      // just opened: ask now
-            if (!onScreen && s_wasOnScreen) g_adsb.close();    // just left: give the socket back
             s_wasOnScreen = onScreen;
             // The special-aircraft alert promises any screen, and it learns about aircraft only
             // from this feed, which otherwise runs only while the tracker is up: off screen the
@@ -541,7 +540,6 @@ static void adsb_task(void*) {
                 // longer invent an aircraft under any circumstances. A theme.json that still
                 // carries the old flag is simply ignored, which is why the parse went too.
                 const bool okPoll = g_adsb.poll(fresh);
-                if (!onScreen) g_adsb.close();               // a background ask keeps no socket
                 if (okPoll) {
                     Serial.printf("[adsb] fetched %u aircraft\n", (unsigned)fresh.size());
                     failCount = 0;

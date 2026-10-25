@@ -28,8 +28,8 @@ static uint32_t millis() {
 
 // Headlines come from the Orb's own gateway rather than from a publisher directly, because
 // every news source worth reading is HTTPS-only and this board cannot raise the two
-// contiguous ~16 KB internal buffers a TLS handshake needs (see the ADSB_PRIMARY_TLS notes
-// in config.h). The worker holds the TLS end, reads the feeds, cuts each headline to fit
+// contiguous ~16 KB internal buffers a TLS handshake needed before 2.33 (net_fetch.h has
+// the PSRAM route that changed that). The worker holds the TLS end, reads the feeds, cuts each headline to fit
 // this dial, and answers here over plain HTTP.
 //
 // This is the opposite of the aircraft feed, which must NOT be routed through the worker:
