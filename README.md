@@ -89,6 +89,7 @@ taken or left on its own.
 - **Settings no longer get lost.** The flight tracker's route cache could fill the settings store completely, after which every setting changed was silently gone at the next restart, the WiFi calibration included. It now keeps at most 80 routes and never fills the store.
 - **HTTPS where it is needed.** Every `https://` request used to fail on this board for lack of internal memory. TLS can now use PSRAM, and the network task has the extra stack a handshake needs, but only a page that asks for it gets it (today MeshCore): in 2.33.0 every request did, and the flight photos' sessions then took the memory the WiFi receives into, so the weather radar stopped loading. Fixed in 2.33.1.
 - With nine apps, Settings dropped out of the app menu; the app table now grows with the apps.
+- **The clock's English date window.** On Tuesdays and Thursdays it read past the end of its font and drew garbage, and the other days lost letters, because the font had only the German weekdays and LVGL 8.4.0 accepts the first character past a font's range. Found by **jbat66**. The font now has both languages, and `tools/patch_lvgl.py` corrects that check for every font at build time.
 
 **Taken from Zion's repo** (each with its author kept and a note of the original commit):
 - Older and smaller SD cards (2 GB and under) are run slower instead of being reported as no card.
