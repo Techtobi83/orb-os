@@ -75,6 +75,7 @@ extern "C" { volatile int orb_lv_psram_scope = 0; }   // declared in lv_psram_al
 #if __has_include("secrets.h")
 #include "secrets.h"                 // optional, gitignored: DEV_WIFI_SSID / DEV_WIFI_PASS
 #endif
+#include <esp_task_wdt.h>           // the loop watch at the end of setup()
 #include <Preferences.h>            // NVS (persist theme/settings)
 #include <time.h>                   // NTP/RTC clock + date
 #include <WebServer.h>              // configuration web page
@@ -4202,6 +4203,16 @@ void setup() {
 
     Serial.printf("setup done (firmware %s, %s)\n", FW_VERSION,
                   freshFirmware ? "first boot after an update" : "already seen this build");
+
+    // A watch on the UI loop that REPORTS and does not reboot. On 2026-11-14 the loop stopped
+    // for good (no frames, no web page, no reply over USB) while the feed task on the other
+    // core went on fetching aircraft, and nothing said where it had stopped. The task
+    // watchdog now prints both cores' backtraces whenever loop() has not come round for 8 s.
+    // No panic: a frozen face is not made better by a reboot loop, and long but healthy work
+    // on this thread (the weather map's first build, ~2 s) stays well inside the limit.
+    const esp_task_wdt_config_t twdt = { .timeout_ms = 8000, .idle_core_mask = 0, .trigger_panic = false };
+    if (esp_task_wdt_reconfigure(&twdt) == ESP_OK) enableLoopWDT();
+    else Serial.println("[wdt] could not set up the loop watch");
 }
 
 void loop() {

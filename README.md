@@ -104,6 +104,7 @@ taken or left on its own.
 - **HTTPS where it is needed.** Every `https://` request used to fail on this board for lack of internal memory. TLS can now use PSRAM, and the network task has the extra stack a handshake needs, but only a page that asks for it gets it (today MeshCore): in 2.33.0 every request did, and the flight photos' sessions then took the memory the WiFi receives into, so the weather radar stopped loading. Fixed in 2.33.1.
 - With nine apps, Settings dropped out of the app menu; the app table now grows with the apps.
 - **The clock's English date window.** On Tuesdays and Thursdays it read past the end of its font and drew garbage, and the other days lost letters, because the font had only the German weekdays and LVGL 8.4.0 accepts the first character past a font's range. Found by **jbat66**. The font now has both languages, and `tools/patch_lvgl.py` corrects that check for every font at build time.
+- **A frozen screen leaves a trace.** If the screen's loop stops for 8 seconds while the network keeps running, the Orb now prints where both processor cores are stuck to the serial console (115200 baud), instead of freezing without a word. It does not restart the Orb.
 
 **Taken from Zion's repo** (each with its author kept and a note of the original commit):
 - Older and smaller SD cards (2 GB and under) are run slower instead of being reported as no card.
