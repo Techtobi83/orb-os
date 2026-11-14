@@ -895,10 +895,12 @@ static inline int blip_reach_design(const theme_style::Radar &rs) {
     }
     return rs.blipSize;
 }
-// The class shapes (draw_class_shape) reach 16 px from the aircraft's position at most.
+// The class shapes (draw_class_shape) reach 24 px from the aircraft's position at most: the
+// wide-body's wing tip, 0.53 of its 40 px length out and 0.22 back, plus antialiasing.
+constexpr int CLASS_SHAPE_REACH = 24;
 static inline int blip_reach(const theme_style::Radar &rs) {
     const int r = blip_reach_design(rs);
-    return s_classShapes ? LV_MAX(16, r) : r;
+    return s_classShapes ? LV_MAX(CLASS_SHAPE_REACH, r) : r;
 }
 
 // glyph + label bounding box (for partial invalidation during the glide).
@@ -1357,10 +1359,12 @@ const ShapePiece P_HELI[] = {
     { 6, false, { {0,-.26f},{.1f,-.18f},{.12f,-.02f},{.06f,.13f},{-.06f,.13f},{-.12f,-.02f} } },
     { 4, false, { {-.025f,.1f},{.025f,.1f},{.025f,.48f},{-.025f,.48f} } },
 };
-// Lengths are the browser preview's: a 737 at 21 px, a 777 at 28, a Cessna at 13.
+// Lengths in px. The browser preview's 13 to 28 px read as specks on the glass (owner,
+// 2026-11-14), half the size of the 37 x 43 px aircraft the Tagesring theme drew before, so
+// an airliner is now about that size and the rest scale with it.
 const ClassShape SHAPES[] = {
     { 0, 0, nullptr },
-    { 13, 4, P_LIGHT }, { 16, 4, P_SMALL }, { 21, 4, P_LARGE }, { 28, 5, P_HEAVY }, { 20, 2, P_HELI },
+    { 20, 4, P_LIGHT }, { 24, 4, P_SMALL }, { 32, 4, P_LARGE }, { 40, 5, P_HEAVY }, { 30, 2, P_HELI },
 };
 }  // namespace
 

@@ -65,11 +65,11 @@ taken or left on its own.
 
 | Symbol | Class | Size on the Orb | Examples |
 |---|---|---|---|
-| Light aircraft | A1 (also gliders, ultralights, drones) | 13 px | Cessna 172, Piper |
-| Small aircraft | A2, A6 | 16 px | Learjet, Citation, ATR, Dash 8 |
-| Airliner | A3 | 21 px | A319, A320, A321, Boeing 737 |
-| Wide-body | A4, A5 | 28 px | Boeing 777, 787, A350, A380 |
-| Helicopter | A7 | 20 px | rescue, police, ADAC |
+| Light aircraft | A1 (also gliders, ultralights, drones) | 20 px | Cessna 172, Piper |
+| Small aircraft | A2, A6 | 24 px | Learjet, Citation, ATR, Dash 8 |
+| Airliner | A3 | 32 px | A319, A320, A321, Boeing 737 |
+| Wide-body | A4, A5 | 40 px | Boeing 777, 787, A350, A380 |
+| Helicopter | A7 | 30 px | rescue, police, ADAC |
 
 - **Special aircraft alert**: emergency squawks, rare types (A380, An-124, Beluga, 747, B-52...), rescue helicopters, military and low passes get a sonar ping (or a siren for an emergency) and a banner. Settings → Sound → Special alert.
 - **Tap an aircraft** on the glass to open its card, as turning the knob does; tap empty sky to close it.

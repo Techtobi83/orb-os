@@ -39,11 +39,11 @@ P_HELI = [([(0,-.26),(.1,-.18),(.12,-.02),(.06,.13),(-.06,.13),(-.12,-.02)], Fal
           ([(-.025,.1),(.025,.1),(.025,.48),(-.025,.48)], False)]
 
 CLASSES = [
-    ("light", P_LIGHT, 13, "Light aircraft", "A1", "Cessna 172, Piper, gliders, ultralights"),
-    ("small", P_SMALL, 16, "Small aircraft", "A2", "Learjet, Citation, ATR, Dash 8"),
-    ("large", P_LARGE, 21, "Airliner", "A3", "A319, A320, A321, Boeing 737"),
-    ("heavy", P_HEAVY, 28, "Wide-body", "A4 / A5", "Boeing 777, 787, A350, A380"),
-    ("heli",  P_HELI,  20, "Helicopter", "A7", "rescue, police, ADAC"),
+    ("light", P_LIGHT, 20, "Light aircraft", "A1", "Cessna 172, Piper, gliders, ultralights"),
+    ("small", P_SMALL, 24, "Small aircraft", "A2", "Learjet, Citation, ATR, Dash 8"),
+    ("large", P_LARGE, 32, "Airliner", "A3", "A319, A320, A321, Boeing 737"),
+    ("heavy", P_HEAVY, 40, "Wide-body", "A4 / A5", "Boeing 777, 787, A350, A380"),
+    ("heli",  P_HELI,  30, "Helicopter", "A7", "rescue, police, ADAC"),
 ]
 
 
@@ -74,7 +74,7 @@ d = ImageDraw.Draw(img)
 S = lambda v: v * SS
 
 # ---- left: the scope, device pixels scaled 1.3x
-SC = 1.3; CX, CY, R = 330, 350, 214 * SC
+SC = 1.15; CX, CY, R = 330, 350, 214 * SC
 d.ellipse([S(CX - R - 18), S(CY - R - 18), S(CX + R + 18), S(CY + R + 18)], fill=(30, 31, 34))
 d.ellipse([S(CX - R), S(CY - R), S(CX + R), S(CY + R)], fill=(10, 9, 8))
 import random
