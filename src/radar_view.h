@@ -151,6 +151,8 @@ void setAirportsEnabled(bool on);                // show/hide airport markers on
 bool airportsEnabled();
 void setTrailLength(int level);                  // 0=off 1=short 2=medium 3=long (aircraft trails + flow)
 void setMaxOnScreen(int n);                       // how many (nearest) aircraft to draw on the scope
+void setClassShapes(bool on);                     // aircraft drawn by size class (light..heavy, helicopter)
+bool classShapes();
 void setLargeText(bool on);                       // accessibility: bigger glyph labels. Call BEFORE init()
 
 // Re-attach the baked plate/overlay image sources (decoding lazily if needed).

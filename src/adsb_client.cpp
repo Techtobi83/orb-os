@@ -205,7 +205,7 @@ bool AdsbClient::fetchFrom(uint8_t provider, std::vector<Aircraft>& out) {
     const char* keys[] = { "ac", "aircraft" };
     const char* flds[] = { "hex", "flight", "t", "lat", "lon", "alt_baro",
                            "track", "true_heading", "gs", "baro_rate",
-                           "squawk", "seen_pos", "dbFlags" };
+                           "squawk", "seen_pos", "dbFlags", "category" };
     for (const char* k : keys)
         for (const char* f : flds)
             filter[k][0][f] = true;
@@ -284,6 +284,7 @@ bool AdsbClient::fetchFrom(uint8_t provider, std::vector<Aircraft>& out) {
         ac.squawk   = a["squawk"].is<const char*>() ? atoi(a["squawk"]) : (a["squawk"] | -1);
         ac.seenPos  = a["seen_pos"] | 0;
         ac.military = ((a["dbFlags"] | 0u) & 0x1) != 0;
+        ac.sizeClass = acClassFromCategory(a["category"] | "");
         ac.lastUpdateMs = now;
 
         if (farIdx >= 0) { tmp[farIdx] = std::move(ac); dist[farIdx] = d; }   // replace the farthest kept

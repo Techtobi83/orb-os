@@ -146,6 +146,7 @@ static bool                  g_hideGround   = false;                 // skip on-
 static int                   g_minAltFt     = 0;                     // only show aircraft above this altitude, ft (0 = off) (web/NVS)
 static int                   g_deadZonePx   = 0;                     // ignore aircraft inside this many px of scope center (0 = off) (pushed design)
 static bool                  g_milOnly      = false;                 // only show military-flagged aircraft (web/NVS)
+static bool                  g_acClass      = true;                  // aircraft drawn by size class (web/NVS "acclass"), radar_view.cpp
 // Has a real location ever been established on this device? (NVS "locSet")
 //
 // Read by core 0 to decide whether polling the aircraft feed is worth doing at all, and by
@@ -2685,6 +2686,7 @@ static void handleLegacyConfig() {
         "<label><input type=checkbox class=ck %s onchange='hg(this.checked)'>Hide aircraft on the ground</label>"
         "<label>Minimum altitude</label><select onchange='ma(this.value)'>%s</select>"
         "<label><input type=checkbox class=ck %s onchange='mo(this.checked)'>Military aircraft only</label>"
+        "<label><input type=checkbox class=ck %s onchange='ac(this.checked)'>Aircraft symbols by size (light, jet, wide-body, helicopter)</label>"
         "<label>Aircraft trails</label><select onchange='tl(this.value)'>%s</select>"
         "<label>Max aircraft on screen</label><select onchange='mx(this.value)'>%s</select>"
         "<label><input type=checkbox class=ck %s onchange='bt(this.checked)'>Large text (restarts the device)</label>"
@@ -2726,6 +2728,7 @@ static void handleLegacyConfig() {
         "function hg(c){fetch('/ground?v='+(c?1:0)+'&save=1')}"
         "function ma(v){fetch('/altmin?v='+v+'&save=1')}"
         "function mo(c){fetch('/milonly?v='+(c?1:0)+'&save=1')}"
+        "function ac(c){fetch('/acclass?v='+(c?1:0)+'&save=1')}"
         "function tl(v){fetch('/trail?v='+v+'&save=1')}"
         "function mx(v){fetch('/maxac?v='+v+'&save=1')}"
         "function bt(c){fetch('/bigtext?v='+(c?1:0)+'&save=1')}"
@@ -2744,7 +2747,7 @@ static void handleLegacyConfig() {
         g_settings.homeLat, g_settings.homeLon, ropts.c_str(), topts.c_str(),
         tzopts.c_str(),
         g_brightnessDay, iopts.c_str(), g_showSweep ? "checked" : "",
-        g_showAirports ? "checked" : "", g_hideGround ? "checked" : "", maopts.c_str(), g_milOnly ? "checked" : "",
+        g_showAirports ? "checked" : "", g_hideGround ? "checked" : "", maopts.c_str(), g_milOnly ? "checked" : "", g_acClass ? "checked" : "",
         tlopts.c_str(), mxopts.c_str(), g_bigText ? "checked" : "", g_rotation, uopts.c_str(),
         g_volume, g_muted ? "checked" : "", aopts.c_str(), popts.c_str(),
         g_settings.homeLat, g_settings.homeLon, (g_tz == TZ_STR ? 0 : 1));
@@ -3056,6 +3059,20 @@ static void handleAirports() {   // show/hide airport markers (live)
             Preferences p;
             p.begin("capsuleradar", false);
             p.putBool("airports", g_showAirports);
+            p.end();
+        }
+    }
+    g_web.send(200, "text/plain", "ok");
+}
+
+static void handleAcClass() {   // aircraft by size class on/off (live)
+    if (g_web.hasArg("v")) {
+        g_acClass = g_web.arg("v").toInt() != 0;
+        radar::setClassShapes(g_acClass);
+        if (g_web.hasArg("save")) {
+            Preferences p;
+            p.begin("capsuleradar", false);
+            p.putBool("acclass", g_acClass);
             p.end();
         }
     }
@@ -3552,6 +3569,7 @@ void setup() {
             if (rs.minAltFt   < 0) g_minAltFt   = p.getInt("minalt", 0);
         }
         g_milOnly = p.getBool("milonly", false);
+        g_acClass = p.getBool("acclass", true);
         // Migrate the old quarter-turn setting (rot=0..3) without changing existing
         // installations' orientation. New firmware stores actual degrees separately.
         g_rotation = p.isKey("rotDeg") ? p.getInt("rotDeg", 0) : p.getInt("rot", 0) * 90;
@@ -3580,6 +3598,7 @@ void setup() {
         g_adsb.setMilitaryOnly(g_milOnly);
         radar::setTrailLength(g_trailLen);
         radar::setMaxOnScreen(g_maxAc);
+        radar::setClassShapes(g_acClass);
         display::setRotation((uint16_t)g_rotation);
         g_rotation = display::rotation();
     }
@@ -4136,6 +4155,7 @@ void setup() {
     g_web.on("/altmin", handleAltMin);
     g_web.on("/milonly", handleMilOnly);
     g_web.on("/trail", handleTrail);
+    g_web.on("/acclass", handleAcClass);   // aircraft symbols by size class
     g_web.on("/maxac", handleMaxAc);
     g_web.on("/bigtext", handleBigText);
     g_web.on("/rotate", handleRotate);

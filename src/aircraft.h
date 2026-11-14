@@ -23,8 +23,32 @@ struct Aircraft {
     int      squawk = -1;
     uint32_t seenPos = 0;    // s since last position
     bool     military = false;
+    uint8_t  sizeClass = 0;  // AC_CLASS_*, from the ADS-B emitter category ("A3"); 0 = not sent
     uint32_t lastUpdateMs = 0; // millis() when we last saw it (for trails/expiry)
 };
+
+// What the aircraft is, by size, for the radar's symbol. From the emitter category the
+// transponder itself broadcasts (DO-260B), which adsb.lol and adsb.fi pass on as "category".
+enum : uint8_t {
+    AC_CLASS_NONE = 0,
+    AC_CLASS_LIGHT,     // A1 light (< 15,500 lb), B1 glider, B4 ultralight, B6 drone
+    AC_CLASS_SMALL,     // A2 small (15,500-75,000 lb), A6 high performance
+    AC_CLASS_LARGE,     // A3 large (75,000-300,000 lb): A320, 737
+    AC_CLASS_HEAVY,     // A4 B757-class, A5 heavy (> 300,000 lb): 777, A350
+    AC_CLASS_HELI,      // A7 rotorcraft
+};
+inline uint8_t acClassFromCategory(const char *c) {
+    if (!c || !c[0] || !c[1]) return AC_CLASS_NONE;
+    if (c[0] == 'A') switch (c[1]) {
+        case '1': return AC_CLASS_LIGHT;
+        case '2': case '6': return AC_CLASS_SMALL;
+        case '3': return AC_CLASS_LARGE;
+        case '4': case '5': return AC_CLASS_HEAVY;
+        case '7': return AC_CLASS_HELI;
+    }
+    if (c[0] == 'B' && (c[1] == '1' || c[1] == '4' || c[1] == '6')) return AC_CLASS_LIGHT;
+    return AC_CLASS_NONE;
+}
 
 inline bool acIsEmergency(int squawk) {
     return squawk == 7500 || squawk == 7600 || squawk == 7700;

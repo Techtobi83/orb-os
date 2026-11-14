@@ -211,6 +211,7 @@ static bool       s_rangeLblVisible = true;
 static bool       s_sweepEnabled    = true;
 static bool       s_airportsEnabled = true;
 static int        s_maxOnScreen     = 12;          // how many (nearest) aircraft to draw (web-configurable)
+static bool       s_classShapes     = true;        // aircraft by size class, see draw_class_shape
 static bool       s_bigText         = false;       // accessibility: bigger glyph labels (set before init)
 static int        s_trailMax        = TRAIL_MAX;   // per-aircraft trail length (0 = off)
 static int        s_flowMax         = FLOW_MAX;    // persistent flow-layer segments, count cap (0 = off)
@@ -296,6 +297,7 @@ struct AcDraw {
     bool       onGround;
     float      vsFpm, gsKt, distKm, bearingDeg;
     int        squawk;
+    uint8_t    sizeClass;      // AC_CLASS_*, see draw_class_shape
     float      freshness;      // 1.0 = seen this poll, fading to a floor as it ages, see ac_freshness()
     std::vector<lv_point_t> trail;
 };
@@ -880,7 +882,7 @@ static void invalidate_sweeps(float prevDeg, float deg, float wxPrevDeg, float w
 // corner: a 100 px icon padded as if it were a 10 px dot leaves the invalidation area
 // short, and the glide smears the parts that fall outside it. Rotation is why the corner
 // matters rather than the edge, and an off-centre pivot is why both sides are measured.
-static inline int blip_reach(const theme_style::Radar &rs) {
+static inline int blip_reach_design(const theme_style::Radar &rs) {
     if (rs.blipTypeImage) {
         if (const lv_img_dsc_t *icon = radar_custom_blip_icon()) {
             const int w = icon->header.w, h = icon->header.h;
@@ -892,6 +894,11 @@ static inline int blip_reach(const theme_style::Radar &rs) {
         }
     }
     return rs.blipSize;
+}
+// The class shapes (draw_class_shape) reach 16 px from the aircraft's position at most.
+static inline int blip_reach(const theme_style::Radar &rs) {
+    const int r = blip_reach_design(rs);
+    return s_classShapes ? LV_MAX(16, r) : r;
 }
 
 // glyph + label bounding box (for partial invalidation during the glide).
@@ -1305,6 +1312,100 @@ static void draw_glow(lv_draw_ctx_t *d, lv_point_t pos, float baseR, float glowP
     }
 }
 
+// ---- Aircraft by size class (2.34.0) --------------------------------------------------------
+//
+// Five shapes, one per size class the transponder broadcasts (aircraft.h), drawn in the blip's
+// own colour in place of the design's dot, kite or image whenever the class is known. Designed
+// in the owner's browser preview first (2026-11-14) and kept to the same geometry: a unit box,
+// nose up at y = -0.5, tail at +0.5, scaled to the class's length in px.
+//
+// LVGL 8's polygon fill is only right for CONVEX outlines, so every shape is a few convex
+// pieces. A piece marked `mirror` is the right half and is drawn again flipped across the
+// fuselage, its points reversed so both keep the same winding.
+
+namespace {
+struct ShapePiece { uint8_t n; bool mirror; float p[6][2]; };
+struct ClassShape { uint8_t len; uint8_t pieces; const ShapePiece *piece; };
+
+const ShapePiece P_LIGHT[] = {
+    { 7, false, { {0,-.47f},{.05f,-.42f},{.055f,-.06f},{.025f,.44f},{-.025f,.44f},{-.055f,-.06f} } },
+    { 4, false, { {-.56f,-.19f},{.56f,-.19f},{.56f,-.06f},{-.56f,-.06f} } },      // straight wing
+    { 4, false, { {-.2f,.35f},{.2f,.35f},{.2f,.44f},{-.2f,.44f} } },             // tailplane
+    { 4, false, { {-.17f,-.53f},{.17f,-.53f},{.17f,-.49f},{-.17f,-.49f} } },     // propeller
+};
+const ShapePiece P_SMALL[] = {
+    { 6, false, { {0,-.5f},{.045f,-.43f},{.06f,.06f},{.04f,.47f},{-.04f,.47f},{-.06f,.06f} } },
+    { 4, true,  { {.055f,-.08f},{.44f,.1f},{.44f,.15f},{.06f,.06f} } },          // swept wing
+    { 4, true,  { {.055f,.2f},{.13f,.2f},{.14f,.33f},{.055f,.33f} } },           // engine at the tail
+    { 4, true,  { {.03f,.38f},{.22f,.45f},{.22f,.49f},{.03f,.47f} } },           // tailplane
+};
+const ShapePiece P_LARGE[] = {
+    { 6, false, { {0,-.5f},{.05f,-.43f},{.055f,.06f},{.03f,.45f},{-.03f,.45f},{-.055f,.06f} } },
+    { 4, true,  { {.055f,-.12f},{.5f,.12f},{.5f,.18f},{.055f,.06f} } },
+    { 4, true,  { {.04f,.33f},{.2f,.42f},{.2f,.47f},{.03f,.45f} } },
+    { 4, true,  { {.1775f,-.02f},{.2225f,-.02f},{.2225f,.1f},{.1775f,.1f} } },   // engine
+};
+const ShapePiece P_HEAVY[] = {
+    { 6, false, { {0,-.5f},{.075f,-.41f},{.08f,.08f},{.04f,.46f},{-.04f,.46f},{-.08f,.08f} } },
+    { 4, true,  { {.08f,-.13f},{.53f,.15f},{.53f,.22f},{.08f,.08f} } },
+    { 4, true,  { {.06f,.34f},{.23f,.43f},{.23f,.48f},{.04f,.46f} } },
+    { 4, true,  { {.17f,-.04f},{.23f,-.04f},{.23f,.1f},{.17f,.1f} } },           // engines
+    { 4, true,  { {.325f,.05f},{.375f,.05f},{.375f,.17f},{.325f,.17f} } },
+};
+// Helicopter: the cabin and the boom are polygons, the rotor is drawn as lines (draw_class_shape)
+const ShapePiece P_HELI[] = {
+    { 6, false, { {0,-.26f},{.1f,-.18f},{.12f,-.02f},{.06f,.13f},{-.06f,.13f},{-.12f,-.02f} } },
+    { 4, false, { {-.025f,.1f},{.025f,.1f},{.025f,.48f},{-.025f,.48f} } },
+};
+// Lengths are the browser preview's: a 737 at 21 px, a 777 at 28, a Cessna at 13.
+const ClassShape SHAPES[] = {
+    { 0, 0, nullptr },
+    { 13, 4, P_LIGHT }, { 16, 4, P_SMALL }, { 21, 4, P_LARGE }, { 28, 5, P_HEAVY }, { 20, 2, P_HELI },
+};
+}  // namespace
+
+static void draw_class_shape(lv_draw_ctx_t *d, uint8_t cls, lv_point_t at, float headingDeg,
+                             lv_color_t color, lv_opa_t opa) {
+    const ClassShape &sh = SHAPES[cls];
+    const float s = (float)sh.len;
+    const float th = headingDeg * (float)M_PI / 180.0f, c = cosf(th), sn = sinf(th);
+    auto map = [&](float x, float y) {
+        lv_point_t q;
+        q.x = (lv_coord_t)(at.x + lroundf((x * c - y * sn) * s));
+        q.y = (lv_coord_t)(at.y + lroundf((x * sn + y * c) * s));
+        return q;
+    };
+    lv_draw_rect_dsc_t g;
+    lv_draw_rect_dsc_init(&g);
+    g.bg_color = color; g.bg_opa = opa;
+    for (int i = 0; i < sh.pieces; ++i) {
+        const ShapePiece &pc = sh.piece[i];
+        lv_point_t pts[6];
+        for (int k = 0; k < pc.n; ++k) pts[k] = map(pc.p[k][0], pc.p[k][1]);
+        lv_draw_polygon(d, &g, pts, pc.n);
+        if (pc.mirror) {
+            for (int k = 0; k < pc.n; ++k) pts[k] = map(-pc.p[pc.n - 1 - k][0], pc.p[pc.n - 1 - k][1]);
+            lv_draw_polygon(d, &g, pts, pc.n);
+        }
+    }
+    if (cls == AC_CLASS_HELI) {
+        lv_draw_line_dsc_t ln;
+        lv_draw_line_dsc_init(&ln);
+        ln.color = color; ln.width = 2; ln.opa = opa; ln.round_start = ln.round_end = 1;
+        lv_point_t a = map(-.4f, -.32f), b = map(.4f, .24f);
+        lv_draw_line(d, &ln, &a, &b);                    // two rotor blades
+        a = map(.4f, -.32f); b = map(-.4f, .24f);
+        lv_draw_line(d, &ln, &a, &b);
+        a = map(-.1f, .45f); b = map(.1f, .45f);
+        lv_draw_line(d, &ln, &a, &b);                    // tail rotor
+        lv_draw_arc_dsc_t ar;
+        lv_draw_arc_dsc_init(&ar);
+        ar.color = color; ar.width = 1; ar.opa = (lv_opa_t)(opa * 55 / 100);
+        const lv_point_t hub = map(0, -.04f);
+        lv_draw_arc(d, &ar, &hub, (uint16_t)lroundf(.48f * s), 0, 360);   // rotor disc
+    }
+}
+
 // Mirrors the editor's radarKitePoints(): kite=0 is today's notched kite (a
 // tail), kite=1 collapses the notch flush with the wings into a plain triangle.
 static inline void custom_kite_points(float kite, float *gx, float *gy) {
@@ -1393,9 +1494,16 @@ static void draw_custom_ac(lv_draw_ctx_t *d) {
             if (boosted > selBlipGlowAmt) selBlipGlowAmt = boosted;
             selBlipGlowColor = lv_color_hex(rs.selGlowColor);
         }
-        draw_glow(d, ac.pos, (float)rs.blipSize, selBlipGlowAmt * ac.freshness, selBlipGlowColor);
+        const bool byClass = s_classShapes && ac.sizeClass != AC_CLASS_NONE;
+        draw_glow(d, ac.pos, byClass ? SHAPES[ac.sizeClass].len * 0.5f : (float)rs.blipSize,
+                  selBlipGlowAmt * ac.freshness, selBlipGlowColor);
 
-        if (rs.blipTypeImage) {
+        if (byClass) {
+            // The class's own shape, in the colour the design gives its blips (fixed, by altitude,
+            // or the selection's), turned to the track unless the design keeps blips upright.
+            const float hdg = rs.blipRotate ? ((ac.track != ac.track) ? 0.0f : ac.track) : 0.0f;
+            draw_class_shape(d, ac.sizeClass, ac.pos, hdg, blipColor, scale_opa(LV_OPA_COVER, ac.freshness));
+        } else if (rs.blipTypeImage) {
             // The uploaded aircraft icon, rotated to heading and (optionally) recolored
             // by altitude band via LVGL's own image recolor mix — the icon's alpha was
             // already derived from its Blend mode client-side (see exportRadarLayers'
@@ -1502,8 +1610,9 @@ static void draw_custom_ac(lv_draw_ctx_t *d) {
             s_lastLog = now;
             Serial.printf("[perf] radar aircraft draw: %lu us for %d aircraft (%s icons)\n",
                           (unsigned long)(micros() - t_ac0), acDrawn,
-                          rs.blipTypeImage ? (rs.blipRotate ? "rotated image" : "image, no rotate")
-                                           : "vector");
+                          s_classShapes ? "size-class (design's own where no class)"
+                          : rs.blipTypeImage ? (rs.blipRotate ? "rotated image" : "image, no rotate")
+                                             : "vector");
         }
     }
 #endif
@@ -1862,6 +1971,12 @@ void setTrailLength(int level) {
     flow_redraw_all();                              // repaint the flow canvas at the new length
     if (s_acLayer) lv_obj_invalidate(s_acLayer);
 }
+
+void setClassShapes(bool on) {
+    s_classShapes = on;
+    if (s_acLayer) lv_obj_invalidate(s_acLayer);
+}
+bool classShapes() { return s_classShapes; }
 
 void setMaxOnScreen(int n) {
     s_maxOnScreen = (n < 1) ? 1 : (n > ADSB_MAX_AIRCRAFT ? ADSB_MAX_AIRCRAFT : n);  // never more than the feed pulls
@@ -2561,6 +2676,7 @@ void update(const std::vector<Aircraft> &aircraft, const RadarSettings &s) {
         d.distKm = (float)distKm;
         d.bearingDeg = (float)brg;
         d.squawk = ac.squawk;
+        d.sizeClass = ac.sizeClass;
         // millis() and lv_tick_get() are the same clock on-device (lv_conf.h wires LVGL's
         // tick straight to millis()), so this needs no unit conversion. A contact newer
         // than "now" (clock wrapped, or the poll's stamp is momentarily ahead of this
