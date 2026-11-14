@@ -57,6 +57,20 @@ taken or left on its own.
 - Place names read as the town only; the start screen holds for 5 s.
 
 **Flight tracker**
+- **Aircraft by size class** (2.34): every aircraft gets a symbol for what it is, from the emitter category its own transponder broadcasts. A Cessna is small with straight wings and a propeller, an A320 is a mid-size jet, a 777 a large wide-body, a helicopter shows its rotor. The symbols take the theme's blip colour (fixed or by altitude) and turn with the track. Aircraft that send no category keep the theme's own symbol. Switch it off with *Aircraft symbols by size* on `http://theorb.local/legacy`.
+
+<p align="center">
+  <img src="docs/img/fork-aircraft-classes.png" width="820" alt="The flight tracker with aircraft drawn by size class: an A320 and a 737 as mid-size jets, a 777 and an A350 as larger wide-bodies, a Cessna as a small propeller aircraft, a business jet and a rescue helicopter with its rotor, and beside it a legend of the five symbols">
+</p>
+
+| Symbol | Class | Size on the Orb | Examples |
+|---|---|---|---|
+| Light aircraft | A1 (also gliders, ultralights, drones) | 13 px | Cessna 172, Piper |
+| Small aircraft | A2, A6 | 16 px | Learjet, Citation, ATR, Dash 8 |
+| Airliner | A3 | 21 px | A319, A320, A321, Boeing 737 |
+| Wide-body | A4, A5 | 28 px | Boeing 777, 787, A350, A380 |
+| Helicopter | A7 | 20 px | rescue, police, ADAC |
+
 - **Special aircraft alert**: emergency squawks, rare types (A380, An-124, Beluga, 747, B-52...), rescue helicopters, military and low passes get a sonar ping (or a siren for an emergency) and a banner. Settings → Sound → Special alert.
 - **Tap an aircraft** on the glass to open its card, as turning the knob does; tap empty sky to close it.
 - No feed polling while the tracker is off screen.
