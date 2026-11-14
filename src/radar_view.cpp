@@ -212,6 +212,7 @@ static bool       s_sweepEnabled    = true;
 static bool       s_airportsEnabled = true;
 static int        s_maxOnScreen     = 12;          // how many (nearest) aircraft to draw (web-configurable)
 static bool       s_classShapes     = true;        // aircraft by size class, see draw_class_shape
+static void draw_polygon_safe(lv_draw_ctx_t *d, const lv_draw_rect_dsc_t *dsc, const lv_point_t *pts, uint16_t n);   // every polygon fill, see there
 static bool       s_bigText         = false;       // accessibility: bigger glyph labels (set before init)
 static int        s_trailMax        = TRAIL_MAX;   // per-aircraft trail length (0 = off)
 static int        s_flowMax         = FLOW_MAX;    // persistent flow-layer segments, count cap (0 = off)
@@ -622,7 +623,7 @@ static void grid_draw_cb(lv_event_t *e) {
         roads_sd::draw(d, road_color(), 130, 1);
         coastline_draw(d, coast_color(), 170, 2);    // landmass outline under the triangle
         if (s_airportsEnabled) airports_draw(d, airport_color(), 150);
-        lv_draw_polygon(d, &td, tri, 3);
+        draw_polygon_safe(d, &td, tri, 3);
         return;
     }
 
@@ -1289,12 +1290,59 @@ static void draw_offrange(lv_draw_ctx_t *d, const AcDraw &ac) {
     lv_draw_rect_dsc_init(&td);
     td.bg_color = ORB_ACCENT;
     td.bg_opa = scale_opa(LV_OPA_COVER, ac.freshness);
-    lv_draw_polygon(d, &td, tri, 3);
+    draw_polygon_safe(d, &td, tri, 3);
 }
 
 // Approximate a canvas shadowBlur glow: concentric filled circles behind the
 // real shape, opacity falling off with radius — the same "soft ring" trick
 // draw_ball's wave animation and the sweep's fading trail already use.
+// THE way this screen fills a polygon. LVGL 8.4's lv_draw_sw_polygon walks the outline down
+// both sides from its top point and only advances a side whose next point is not higher; an
+// outline that rises again on both sides at once never ends the walk, and the UI thread spins
+// there for good. That froze the owner's Orb twice on 2026-11-14: a size-class shape listed 7
+// points and gave 6, the seventh came from the next piece in memory, and in some headings the
+// outline zig-zagged (the task watchdog's backtrace ended in lv_draw_sw_polygon). The walk is
+// replayed here first, with LVGL's own duplicate-point merge, and an outline it could not
+// finish is skipped with a note instead of hanging the screen.
+static void draw_polygon_safe(lv_draw_ctx_t *d, const lv_draw_rect_dsc_t *dsc, const lv_point_t *pts, uint16_t n) {
+    if (n < 3 || n > 16) return;
+    lv_point_t p[16];
+    uint16_t c = 0;
+    for (uint16_t i = 0; i + 1 < n; ++i)
+        if (pts[i].x != pts[i + 1].x || pts[i].y != pts[i + 1].y) p[c++] = pts[i];
+    if (pts[0].x != pts[n - 1].x || pts[0].y != pts[n - 1].y) p[c++] = pts[n - 1];
+    if (c < 3) return;                              // LVGL draws nothing for this either
+    int ymin = 0;
+    for (int i = 1; i < c; ++i) if (p[i].y < p[ymin].y) ymin = i;
+    const int nl0 = (ymin - 1 + c) % c, nr0 = (ymin + 1) % c;
+    const int32_t dxl = p[nl0].x - p[ymin].x, dxr = p[nr0].x - p[ymin].x;
+    const int32_t dyl = p[nl0].y - p[ymin].y, dyr = p[nr0].y - p[ymin].y;
+    const bool inv = dyl * dxr < dyr * dxl;
+    int pl = ymin, pr = ymin;
+    uint32_t cnt = 0;
+    bool ends = false;
+    for (int guard = 0; guard < 4 * c && !ends; ++guard) {
+        const int nl = inv ? (pl + 1) % c : (pl - 1 + c) % c;
+        const int nr = inv ? (pr - 1 + c) % c : (pr + 1) % c;
+        if (p[nl].y >= p[pl].y) { ++cnt; pl = nl; }
+        if (cnt == c) { ends = true; break; }
+        if (p[nr].y >= p[pr].y) { ++cnt; pr = nr; }
+        if (cnt >= c) ends = true;
+    }
+    if (!ends) {
+        static uint32_t s_lastNote = 0;
+        if (s_lastNote == 0 || lv_tick_elaps(s_lastNote) > 10000) {
+            s_lastNote = lv_tick_get();
+            LV_LOG_WARN("polygon skipped");
+#ifdef ARDUINO
+            Serial.printf("[radar] skipped a polygon LVGL would not finish (%u points)\n", (unsigned)n);
+#endif
+        }
+        return;
+    }
+    lv_draw_polygon(d, dsc, pts, n);
+}
+
 static void draw_glow(lv_draw_ctx_t *d, lv_point_t pos, float baseR, float glowPx, lv_color_t color) {
     if (glowPx <= 0.5f) return;
     const int steps = 5;
@@ -1330,7 +1378,7 @@ struct ShapePiece { uint8_t n; bool mirror; float p[6][2]; };
 struct ClassShape { uint8_t len; uint8_t pieces; const ShapePiece *piece; };
 
 const ShapePiece P_LIGHT[] = {
-    { 7, false, { {0,-.47f},{.05f,-.42f},{.055f,-.06f},{.025f,.44f},{-.025f,.44f},{-.055f,-.06f} } },
+    { 6, false, { {0,-.47f},{.05f,-.42f},{.055f,-.06f},{.025f,.44f},{-.025f,.44f},{-.055f,-.06f} } },
     { 4, false, { {-.56f,-.19f},{.56f,-.19f},{.56f,-.06f},{-.56f,-.06f} } },      // straight wing
     { 4, false, { {-.2f,.35f},{.2f,.35f},{.2f,.44f},{-.2f,.44f} } },             // tailplane
     { 4, false, { {-.17f,-.53f},{.17f,-.53f},{.17f,-.49f},{-.17f,-.49f} } },     // propeller
@@ -1384,12 +1432,13 @@ static void draw_class_shape(lv_draw_ctx_t *d, uint8_t cls, lv_point_t at, float
     g.bg_color = color; g.bg_opa = opa;
     for (int i = 0; i < sh.pieces; ++i) {
         const ShapePiece &pc = sh.piece[i];
+        const int n = pc.n < 6 ? pc.n : 6;          // p holds six points; a larger count read past it once
         lv_point_t pts[6];
-        for (int k = 0; k < pc.n; ++k) pts[k] = map(pc.p[k][0], pc.p[k][1]);
-        lv_draw_polygon(d, &g, pts, pc.n);
+        for (int k = 0; k < n; ++k) pts[k] = map(pc.p[k][0], pc.p[k][1]);
+        draw_polygon_safe(d, &g, pts, n);
         if (pc.mirror) {
-            for (int k = 0; k < pc.n; ++k) pts[k] = map(-pc.p[pc.n - 1 - k][0], pc.p[pc.n - 1 - k][1]);
-            lv_draw_polygon(d, &g, pts, pc.n);
+            for (int k = 0; k < n; ++k) pts[k] = map(-pc.p[n - 1 - k][0], pc.p[n - 1 - k][1]);
+            draw_polygon_safe(d, &g, pts, n);
         }
     }
     if (cls == AC_CLASS_HELI) {
@@ -1457,7 +1506,7 @@ static void draw_custom_ac(lv_draw_ctx_t *d) {
             lv_draw_rect_dsc_t td;
             lv_draw_rect_dsc_init(&td);
             td.bg_color = oc; td.bg_opa = scale_opa(LV_OPA_COVER, ac.freshness);
-            lv_draw_polygon(d, &td, tri, 3);
+            draw_polygon_safe(d, &td, tri, 3);
             continue;
         }
 
@@ -1570,7 +1619,7 @@ static void draw_custom_ac(lv_draw_ctx_t *d) {
             lv_draw_rect_dsc_t g;
             lv_draw_rect_dsc_init(&g);
             g.bg_color = blipColor; g.bg_opa = scale_opa(LV_OPA_COVER, ac.freshness);
-            lv_draw_polygon(d, &g, pts, 4);
+            draw_polygon_safe(d, &g, pts, 4);
         } else {
             lv_draw_rect_dsc_t g;
             lv_draw_rect_dsc_init(&g);
@@ -1666,7 +1715,7 @@ static void ac_draw_cb(lv_event_t *e) {
             lv_draw_rect_dsc_init(&g);
             g.bg_color = ac.color;
             g.bg_opa = scale_opa(LV_OPA_COVER, ac.freshness);
-            lv_draw_polygon(d, &g, pts, 4);
+            draw_polygon_safe(d, &g, pts, 4);
             if (ac.emergency) {
                 lv_draw_arc_dsc_t h;
                 lv_draw_arc_dsc_init(&h);
